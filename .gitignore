@@ -1,1 +1,21 @@
 venv
+
+# === Dataset (jangan ikut ter-commit, struktur folder tetap dipertahankan via .gitkeep) ===
+
+# Folder kerja sementara
+dataset/_raw/
+dataset/_clean/
+
+# Semua file gambar di dalam dataset/ (rekursif)
+dataset/**/*.jpg
+dataset/**/*.jpeg
+dataset/**/*.png
+
+# Arsip unduhan
+*.zip
+
+# Model detektor wajah (res10 SSD) — unduh ulang via tools, jangan di-commit
+tools/models/
+
+# Tetap pertahankan struktur folder kelas
+!.gitkeep

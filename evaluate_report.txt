@@ -1,0 +1,24 @@
+Model: skin_model_finetuned.h5
+Akurasi keseluruhan: 0.5859 (58.59%)
+
+Classification Report:
+              precision    recall  f1-score   support
+
+        acne     0.7083    0.8500    0.7727        20
+         dry     0.4375    0.7000    0.5385        20
+      normal     0.6250    0.2500    0.3571        20
+        oily     0.4783    0.5500    0.5116        20
+   sensitive     0.9167    0.5789    0.7097        19
+
+    accuracy                         0.5859        99
+   macro avg     0.6332    0.5858    0.5779        99
+weighted avg     0.6303    0.5859    0.5766        99
+
+
+Confusion Matrix (baris=asli, kolom=prediksi):
+labels: acne, dry, normal, oily, sensitive
+[[17  2  0  0  1]
+ [ 0 14  1  5  0]
+ [ 2  7  5  6  0]
+ [ 0  7  2 11  0]
+ [ 5  2  0  1 11]]

@@ -2,6 +2,8 @@
 
 Project machine learning untuk klasifikasi kondisi kulit wajah menggunakan TensorFlow dan arsitektur MobileNetV2 dengan teknik transfer learning.
 
+> 📄 **Detail lengkap Training & Evaluasi ada di [docs/LAPORAN_PROYEK.pdf](docs/LAPORAN_PROYEK.pdf)** — mencakup sumber dataset, pipeline kurasi, strategi anti-leakage kelas `sensitive`, hasil training, confusion matrix, analisis, dan rekomendasi. (Sumber markdown: [docs/LAPORAN_PROYEK.md](docs/LAPORAN_PROYEK.md))
+
 ## 📋 Deskripsi
 
 Project ini mengimplementasikan model deep learning untuk mengklasifikasikan kondisi kulit wajah menjadi 5 kategori berbeda. Model dilatih menggunakan teknik transfer learning dari MobileNetV2 yang telah pretrained pada dataset ImageNet, kemudian di-fine-tune untuk task spesifik klasifikasi kulit wajah.
@@ -14,6 +16,22 @@ Mengklasifikasikan kondisi kulit wajah ke dalam 5 kategori:
 - **Dry** - Kulit kering
 - **Normal** - Kulit normal
 - **Sensitive** - Kulit sensitif
+
+## 📊 Hasil Training & Evaluasi
+
+Model dievaluasi pada **test set (99 gambar)** dengan **akurasi keseluruhan 58,59%**.
+
+| Kelas | Precision | Recall | F1-score |
+|---|---|---|---|
+| acne | 0,71 | 0,85 | **0,77** |
+| dry | 0,44 | 0,70 | 0,54 |
+| normal | 0,63 | 0,25 | **0,36** |
+| oily | 0,48 | 0,55 | 0,51 |
+| sensitive | 0,92 | 0,58 | **0,71** |
+
+Kelas `acne` dan `sensitive` paling kuat; trio `dry`/`normal`/`oily` saling tumpang-tindih
+(kelas `normal` terlemah). Pembahasan lengkap, confusion matrix, keterbatasan, dan
+rekomendasi perbaikan ada di **[docs/LAPORAN_PROYEK.pdf](docs/LAPORAN_PROYEK.pdf)**.
 
 ## 🛠️ Tech Stack
 
