@@ -5,6 +5,7 @@ venv
 # Folder kerja sementara
 dataset/_raw/
 dataset/_clean/
+dataset/_recon/
 
 # Semua file gambar di dalam dataset/ (rekursif)
 dataset/**/*.jpg

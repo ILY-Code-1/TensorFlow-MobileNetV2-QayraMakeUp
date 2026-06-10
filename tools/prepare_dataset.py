@@ -42,7 +42,9 @@ IMG_SIZE = 224
 BIG_CLASSES = ["oily", "dry", "normal", "acne"]
 
 # Cap kandidat acak per kelas (curated lama SELALU disertakan):
-ODN_CAP = 400          # oily/dry/normal: 400 kandidat acak per kelas
+# Dinaikkan ke 500 karena kini menggabungkan 2 sumber (skin-types + killa92) dan target
+# output naik ke ~350/kelas (perlu surplus untuk menutup drop face-crop & dedup).
+ODN_CAP = 500          # oily/dry/normal: maks kandidat acak per kelas (gabungan sumber)
 ACNE_MIN_FACES = 250   # acne: proses seluruh pool (~1.832) sampai dapat >=250 wajah ATAU habis
 # sensitive: tanpa cap (proses seluruh pool untuk maksimalkan grup unik)
 
@@ -72,10 +74,13 @@ def is_img(p: Path) -> bool:
 
 
 def collect_curated_old(kelas: str):
-    """Salin-kandidat dari dataset/{train,val,test}/<kelas>/ (copy logis: cuma daftar)."""
+    """100 gambar kurasi manual ASLI, dipulihkan dari git ke dataset/_raw/curated_orig/.
+    PENTING: JANGAN baca dari dataset/{train,val,test} live — folder itu ditimpa oleh
+    output split_dataset.py, sehingga membaca dari sana akan mengontaminasi pool dengan
+    hasil split sebelumnya (termasuk file augmentasi 'aug_*'). Sumber pristine = idempotent."""
     out = []
     for split in OLD_SPLITS:
-        d = ROOT / "dataset" / split / kelas
+        d = RAW / "curated_orig" / split / kelas
         if not d.is_dir():
             continue
         for p in sorted(d.iterdir()):
@@ -96,6 +101,30 @@ def collect_skin_types(kelas: str):
             if is_img(p):
                 # kelas besar = file dianggap independen -> group_id = nama file
                 out.append({"src": p, "group_id": f"{kelas}_{p.name}", "sumber": "skin-types"})
+    return out
+
+
+def collect_killa92(kelas: str):
+    """killa92 (normal/dry/oily) — sumber TAMBAHAN, wajah penuh.
+    Roboflow mengaugmentasi tiap gambar asli jadi beberapa varian '<base>_jpg.rf.<hash>.jpg'.
+    DEDUP per base-id: ambil HANYA SATU varian per base-id (gambar asli unik) supaya
+    keragaman nyata terhitung. group_id = base-id (semua varian augmentasi = 1 grup)."""
+    base = RAW / "killa92" / "skin_type_classification_dataset"
+    out = []
+    seen = set()
+    for split in ["train", "valid", "test"]:
+        d = base / split / kelas
+        if not d.is_dir():
+            continue
+        for p in sorted(d.iterdir()):
+            if not is_img(p):
+                continue
+            m = re.match(r"(.+?)_jpg\.rf\.[0-9a-f]+", p.name)
+            base_id = m.group(1) if m else p.stem
+            if base_id in seen:           # lewati varian augmentasi lain dari gambar yang sama
+                continue
+            seen.add(base_id)
+            out.append({"src": p, "group_id": f"killa92_{base_id}", "sumber": "killa92"})
     return out
 
 
@@ -133,7 +162,8 @@ def collect_sensitive():
 
 def build_pool(kelas: str):
     if kelas in ("oily", "dry", "normal"):
-        raw = collect_skin_types(kelas)
+        # gabungan 2 sumber: skin-types (lama) + killa92 (baru), diacak campur
+        raw = collect_skin_types(kelas) + collect_killa92(kelas)
     elif kelas == "acne":
         raw = collect_acne()
     elif kelas == "sensitive":
@@ -144,7 +174,7 @@ def build_pool(kelas: str):
     curated = collect_curated_old(kelas)
 
     if kelas in ("oily", "dry", "normal"):
-        # curated lama SELALU disertakan; sisanya diisi acak dari raw sampai cap 400.
+        # curated lama SELALU disertakan; sisanya diisi acak dari gabungan sumber sampai cap.
         random.shuffle(raw)
         slots = max(0, ODN_CAP - len(curated))
         pool = curated + raw[:slots]
