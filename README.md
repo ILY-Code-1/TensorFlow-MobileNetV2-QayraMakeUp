@@ -4,6 +4,9 @@ Project machine learning untuk klasifikasi kondisi kulit wajah menggunakan Tenso
 
 > 📄 **Detail lengkap Training & Evaluasi → [docs/LAPORAN_PROYEK.pdf](docs/LAPORAN_PROYEK.pdf)** — mencakup sumber dataset, pipeline kurasi, strategi anti-leakage kelas `sensitive`, hasil training, confusion matrix, analisis, riwayat iterasi, dan rekomendasi. (Sumber markdown: [docs/LAPORAN_PROYEK.md](docs/LAPORAN_PROYEK.md))
 
+> 🤔 **Mengapa 58,65% sudah cukup? → [REASON.md](REASON.md)**
+> — penjelasan sederhana mengapa hasil ini valid dan layak dipertahankan.
+
 ## 📋 Deskripsi
 
 Project ini mengimplementasikan model deep learning untuk mengklasifikasikan kondisi kulit wajah menjadi 5 kategori berbeda. Model dilatih menggunakan teknik transfer learning dari MobileNetV2 yang telah pretrained pada dataset ImageNet, kemudian di-fine-tune untuk task spesifik klasifikasi kulit wajah.
@@ -38,6 +41,8 @@ Kelas `acne` dan `sensitive` paling kuat & konsisten di semua iterasi; trio
 
 Pembahasan lengkap, confusion matrix, keterbatasan, dan rekomendasi ada di
 **[docs/LAPORAN_PROYEK.pdf](docs/LAPORAN_PROYEK.pdf)**.
+
+Penjelasan mengapa akurasi ini valid dan cukup ada di **[REASON.md](REASON.md)**.
 
 ## 🔁 Riwayat Iterasi Dataset
 
