@@ -7,13 +7,22 @@ from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 
 IMG_SIZE = 224
 BATCH_SIZE = 32
-EPOCHS = 15
+# Fase 1 dinaikkan 15 -> 20 epoch: beri model lebih banyak kesempatan belajar fitur
+# sebelum fine-tuning (terutama membantu kelas lemah seperti oily).
+EPOCHS = 20
 
+# Augmentasi train diperkuat: variasi brightness, geser posisi, & shear membuat model
+# lebih robust terhadap perbedaan pencahayaan/framing antar sumber data dan mengurangi
+# overfitting (rotation/zoom/flip lama tetap dipertahankan).
 train_gen = ImageDataGenerator(
     rescale=1./255,
     rotation_range=20,
     zoom_range=0.2,
-    horizontal_flip=True
+    horizontal_flip=True,
+    brightness_range=[0.8, 1.2],
+    width_shift_range=0.1,
+    height_shift_range=0.1,
+    shear_range=0.1
 )
 
 val_gen = ImageDataGenerator(rescale=1./255)
@@ -90,6 +99,12 @@ early_phase1 = EarlyStopping(
     monitor="val_accuracy", mode="max",
     patience=5, restore_best_weights=True, verbose=1,
 )
+# EarlyStopping fase 2: fine-tuning kini lebih agresif (lr 1e-4, 10 epoch) sehingga rawan
+# overfit -> hentikan & pulihkan bobot terbaik bila val_accuracy tak membaik 5 epoch.
+early_phase2 = EarlyStopping(
+    monitor="val_accuracy", mode="max",
+    patience=5, restore_best_weights=True, verbose=1,
+)
 
 # ---- Fase 1: feature extraction (base di-freeze) ----
 history1 = model.fit(
@@ -107,19 +122,22 @@ base_model.trainable = True
 for layer in base_model.layers[:-50]:
     layer.trainable = False
 
+# Fine-tuning lebih agresif: lr dinaikkan 1e-5 -> 1e-4 agar 50 layer terakhir benar-benar
+# beradaptasi ke domain kulit wajah (lr 1e-5 sebelumnya terbukti nyaris tak menggeser val acc).
 model.compile(
-    optimizer=tf.keras.optimizers.Adam(1e-5),
+    optimizer=tf.keras.optimizers.Adam(1e-4),
     loss="categorical_crossentropy",
     metrics=["accuracy"]
 )
 
+# Fase 2 dinaikkan 5 -> 10 epoch (diiringi EarlyStopping agar berhenti sebelum overfit).
 # ckpt_global = instance SAMA -> 'best' fase 1 tetap dipertahankan.
 history2 = model.fit(
     train_data,
     validation_data=val_data,
-    epochs=5,
+    epochs=10,
     class_weight=class_weight,
-    callbacks=[ckpt_global],
+    callbacks=[ckpt_global, early_phase2],
 )
 
 # ---------------------------------------------------------------------------
