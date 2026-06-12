@@ -6,6 +6,7 @@ venv
 dataset/_raw/
 dataset/_clean/
 dataset/_recon/
+dataset/_staging/
 
 # Semua file gambar di dalam dataset/ (rekursif)
 dataset/**/*.jpg
