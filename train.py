@@ -2,10 +2,22 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.applications import MobileNetV2
-from tensorflow.keras import layers, models
+from tensorflow.keras import layers, models, backend as K
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 
 IMG_SIZE = 224
+
+# Focal Loss: memberi bobot lebih besar pada sampel yang sulit diklasifikasi
+# (probabilitas prediksi rendah untuk kelas benar). gamma=2.0 fokus pada hard examples,
+# membantu kelas lemah (oily, dry) yang sering tertukar dengan kelas mirip.
+# class_weight tetap aktif untuk menangani ketimpangan jumlah sampel.
+def focal_loss(gamma=2.0):
+    def _focal(y_true, y_pred):
+        y_pred = K.clip(y_pred, K.epsilon(), 1.0 - K.epsilon())
+        cross_entropy = -y_true * K.log(y_pred)
+        weight = K.pow(1.0 - y_pred, gamma) * y_true
+        return K.sum(weight * cross_entropy, axis=-1)
+    return _focal
 BATCH_SIZE = 32
 # Fase 1 dinaikkan 15 -> 20 epoch: beri model lebih banyak kesempatan belajar fitur
 # sebelum fine-tuning (terutama membantu kelas lemah seperti oily).
@@ -64,13 +76,15 @@ model = models.Sequential([
     base_model,
     layers.GlobalAveragePooling2D(),
     layers.Dense(128, activation="relu"),
-    layers.Dropout(0.5),
+    # Dropout diturunkan 0.5 -> 0.3: train acc ~70% vs val ~56% menunjukkan
+    # Dropout terlalu agresif memotong informasi (underfitting di validasi).
+    layers.Dropout(0.3),
     layers.Dense(train_data.num_classes, activation="softmax")
 ])
 
 model.compile(
     optimizer="adam",
-    loss="categorical_crossentropy",
+    loss=focal_loss(),
     metrics=["accuracy"]
 )
 
@@ -126,7 +140,7 @@ for layer in base_model.layers[:-50]:
 # beradaptasi ke domain kulit wajah (lr 1e-5 sebelumnya terbukti nyaris tak menggeser val acc).
 model.compile(
     optimizer=tf.keras.optimizers.Adam(1e-4),
-    loss="categorical_crossentropy",
+    loss=focal_loss(),
     metrics=["accuracy"]
 )
 

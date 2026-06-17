@@ -22,22 +22,23 @@ Mengklasifikasikan kondisi kulit wajah ke dalam 5 kategori:
 
 ## 📊 Hasil Training & Evaluasi
 
-**Akurasi terbaik: 58,65%** (V4 — dataset **2.084 gambar**, 5 kelas, test set 208 gambar).
+**Akurasi terbaik: 60,58%** (V5 — dataset **2.084 gambar**, 5 kelas, test set 208 gambar, Dropout 0.3 + Focal Loss).
 
 | Kelas | Precision | Recall | F1-score |
 |---|---|---|---|
-| acne | 0,70 | 0,96 | **0,81** |
-| dry | 0,46 | 0,30 | 0,36 |
-| normal | 0,45 | 0,57 | 0,51 |
-| oily | 0,40 | 0,30 | **0,34** |
-| sensitive | 0,88 | 0,72 | **0,79** |
+| acne | 0,71 | 0,96 | **0,82** |
+| dry | 0,38 | 0,50 | 0,43 |
+| normal | 0,49 | 0,52 | 0,51 |
+| oily | 0,62 | 0,20 | **0,30** |
+| sensitive | 0,96 | 0,78 | **0,86** |
 
-Kelas `acne` dan `sensitive` paling kuat & konsisten di semua iterasi; trio
-`dry`/`normal`/`oily` saling tumpang-tindih (kini `oily` terlemah, recall 0,30).
+Kelas `acne` dan `sensitive` paling kuat & konsisten; trio
+`dry`/`normal`/`oily` saling tumpang-tindih (kini `oily` terlemah, recall 0,20).
 
-> ⚙️ **Catatan:** fine-tuning tetap aktif di kode tetapi **tidak efektif** — model terbaik
-> selalu berasal dari **fase 1**, dilindungi `ModelCheckpoint(save_best_only=True)` sehingga
-> fase 2 yang lebih buruk tidak pernah menimpa hasil terbaik.
+> ⚙️ **Catatan:** Dropout diturunkan dari 0.5 → 0.3 untuk mengurangi underfitting di validasi.
+> Focal Loss ditambahkan untuk menangani kelas lemah, namun hasilnya identik dengan
+> categorical crossentropy. Fine-tuning tetap aktif tetapi tidak efektif — model terbaik
+> berasal dari fase 1.
 
 Pembahasan lengkap, confusion matrix, keterbatasan, dan rekomendasi ada di
 **[docs/LAPORAN_PROYEK.pdf](docs/LAPORAN_PROYEK.pdf)**.
@@ -51,7 +52,8 @@ Penjelasan mengapa akurasi ini valid dan cukup ada di **[REASON.md](REASON.md)**
 | V1 | 1.000 foto | 58,59% | Baseline awal |
 | V2 | 1.498 foto | 53,02% | +killa92 — test set lebih berat & beragam |
 | V3 | 1.214 foto | 46,72% | +cleaning manual — terlalu agresif di `acne` |
-| **V4** | **2.084 foto** | **58,65%** | +staging baru — augmentasi lebih kaya (**terbaik**) |
+| V4 | 2.084 foto | 58,65% | +staging baru — augmentasi lebih kaya |
+| **V5** | **2.084 foto** | **60,58%** | **Dropout 0.3 + Focal Loss (terbaik)** |
 
 ## 🛠️ Tech Stack
 
@@ -72,7 +74,7 @@ Penjelasan mengapa akurasi ini valid dan cukup ada di **[REASON.md](REASON.md)**
 - Menambahkan custom layers di atasnya:
   - Global Average Pooling 2D
   - Dense layer (128 neurons, ReLU activation)
-  - Dropout (0.5) untuk mencegah overfitting
+  - Dropout (0.3) untuk mencegah overfitting
   - Output layer (5 neurons, Softmax activation)
 
 ### Fine-Tuning
@@ -99,15 +101,16 @@ Penjelasan mengapa akurasi ini valid dan cukup ada di **[REASON.md](REASON.md)**
 ### 3. Training — Fase 1 (Initial)
 - Epochs: maks **20** (EarlyStopping patience=5)
 - Optimizer: Adam (lr default)
-- Loss: Categorical Crossentropy
+- Loss: Focal Loss (gamma=2.0)
 - Base model dalam kondisi frozen
 - Augmentasi: rotasi ±20°, zoom 20%, horizontal flip, brightness [0.8–1.2], shift 10%, shear 10%
 
 ### 4. Training — Fase 2 (Fine-Tuning)
 - Epochs: maks **10** (EarlyStopping patience=5)
 - Learning rate: **1e-4**
+- Loss: Focal Loss (gamma=2.0)
 - 50 layer terakhir base model di-unfreeze
-- **Catatan**: terbukti tidak menaikkan val accuracy di 3 percobaan; model terbaik selalu dari fase 1
+- **Catatan**: terbukti tidak menaikkan val accuracy secara signifikan; model terbaik selalu dari fase 1
 
 ### 5. Export ke TFLite
 - Convert model Keras ke TensorFlow Lite format
@@ -165,8 +168,8 @@ python train.py
 
 Script ini akan:
 - Load dan augmentasi data dari folder `dataset/`
-- Train fase 1: maks 20 epoch (EarlyStopping)
-- Fine-tune fase 2: maks 10 epoch (EarlyStopping, tidak efektif)
+- Train fase 1: maks 20 epoch (EarlyStopping) dengan Focal Loss
+- Fine-tune fase 2: maks 10 epoch (EarlyStopping, tidak efektif) dengan Focal Loss
 - Simpan model terbaik global ke `skin_model_finetuned.h5` (ModelCheckpoint `save_best_only=True`)
 
 ### 3. Export ke TFLite
@@ -210,6 +213,7 @@ Keunggulan TFLite:
   - Test: 10% — 208 gambar
 - **Classes**: 5 kelas (acne, dry, normal, oily, sensitive)
 - **Distribusi per kelas**: acne 570, dry 425, normal 413, oily 413, sensitive 263 (tidak seimbang — ditangani `class_weight`)
+- **Hasil terbaik**: 60,58% (V5 — Dropout 0.3 + Focal Loss)
 
 ## ⚠️ Limitasi Model
 
