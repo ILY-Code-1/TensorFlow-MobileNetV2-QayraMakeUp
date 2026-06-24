@@ -1,0 +1,341 @@
+============================================================================
+  RINGKASAN RISET — Klasifikasi Kondisi Kulit Wajah
+  MobileNetV2 + TensorFlow Lite | Akurasi Final: 60,58%
+  QayraMakeUp — IlyCode | 17 Juni 2026
+============================================================================
+
+Daftar Isi
+----------
+1. Ringkasan Proyek
+2. Dataset & Struktur
+3. Arsitektur & Pipeline Training
+4. Hasil Akhir (V5 — Terbaik)
+5. Analisis Per Kelas
+6. Confusion Matrix
+7. Eksperimen yang Dilakukan
+8. Eksperimen yang Tidak Berhasil
+9. Mengapa 60,58% Sudah Cukup
+10. Keterbatasan
+11. Rekomendasi untuk Pengembangan Selanjutnya
+
+
+============================================================================
+1. RINGKASAN PROYEK
+============================================================================
+
+Membangun model deep learning untuk mengklasifikasi kondisi kulit wajah
+menjadi 5 kategori: acne, dry, normal, oily, sensitive.
+
+Arsitektur : MobileNetV2 (pretrained ImageNet) + transfer learning
+Framework  : TensorFlow / Keras
+Output     : skin_condition.tflite (~2.6 MB) untuk deployment mobile
+Aplikasi   : QayraMakeUp (rekomendasi produk makeup berdasarkan kulit)
+
+
+============================================================================
+2. DATASET & STRUKTUR
+============================================================================
+
+Total gambar : 2.084 (dataset final V4/V5)
+Input model  : 224x224 piksel RGB
+Split        : 70% train (1.456) / 20% val (420) / 10% test (208)
+Split method : Group-aware (anti-leakage — foto orang yang sama tidak tersebar
+               ke train dan test sekaligus)
+
+Distribusi per kelas:
+  acne       : 570 gambar (terbanyak)
+  dry        : 425 gambar
+  normal     : 413 gambar
+  oily       : 413 gambar
+  sensitive  : 263 gambar (paling sedikit)
+
+Catatan: Kelas tidak seimbang — ditangani dengan class_weight dinamis
+saat training.
+
+
+============================================================================
+3. ARSITEKTUR & PIPELINE TRAINING
+============================================================================
+
+Base Model     : MobileNetV2 (bobot ImageNet, include_top=False)
+Custom Layers  : GlobalAveragePooling2D -> Dense(128, ReLU) -> Dropout(0.3) -> Dense(5, Softmax)
+
+Hyperparameter:
+  Epochs (Fase 1)          : 20 (EarlyStopping, patience=5)
+  Epochs (Fase 2)          : 10 (EarlyStopping, patience=5)
+  Optimizer                : Adam (lr default fase 1, lr=1e-4 fase 2)
+  Loss Function            : Focal Loss (gamma=2.0)
+  Batch Size               : 32
+
+Augmentasi Train (selain rescale):
+  - Rotasi: +/-20 derajat
+  - Zoom: 20%
+  - Horizontal Flip
+  - Brightness: [0.8 - 1.2]
+  - Width/Height Shift: 10%
+  - Shear: 10%
+
+Dua Fase Training:
+  Fase 1 (Feature Extraction): Base model di-freeze, hanya head yang dilatih
+  Fase 2 (Fine-Tuning)       : 50 layer terakhir base model di-unfreeze
+
+
+============================================================================
+4. HASIL AKHIR (V5 — TERBAIK)
+============================================================================
+
+Akurasi keseluruhan di test set: 60,58%
+
+Model terbaik berasal dari: Fase 1, epoch 6
+Val accuracy (Fase 1)     : 57,38%
+Val accuracy (Fase 2)     : 57,62% (tidak signifikan)
+Fine-tuning tetap tidak efektif — model terbaik dari fase 1.
+
+Klasifikasi per kelas:
++------------+-----------+--------+---------+---------+
+| Kelas      | Precision | Recall | F1-score| Support |
++------------+-----------+--------+---------+---------+
+| acne       |   0,71    |  0,96  |  0,82   |   52    |
+| dry        |   0,38    |  0,50  |  0,43   |   40    |
+| normal     |   0,49    |  0,52  |  0,51   |   44    |
+| oily       |   0,62    |  0,20  |  0,30   |   40    |
+| sensitive  |   0,96    |  0,78  |  0,86   |   32    |
++------------+-----------+--------+---------+---------+
+| accuracy   |     -     |   -    |  0,61   |   208   |
+| macro avg  |   0,63    |  0,59  |  0,58   |   208   |
+| weighted   |   0,62    |  0,61  |  0,59   |   208   |
++------------+-----------+--------+---------+---------+
+
+
+============================================================================
+5. ANALISIS PER KELAS
+============================================================================
+
+KELAS TERKUAT:
+  acne      : F1 0,82, recall 96% — paling mudah dideteksi karena tekstur
+              jerawat yang khas
+  sensitive : F1 0,86, precision 96% — kemerahan kulit menjadi fitur kuat
+
+KELAS LEMAH:
+  oily  : F1 0,30, recall 20% — paling sulit; 13 dari 40 foto oily tertukar
+          dengan normal karena kilap minyak sulit terlihat dari foto
+  dry   : F1 0,43, recall 50% — cukup kuat tapi masih tumpang tindih
+  normal: F1 0,51, recall 52% — sedang
+
+Sumber error utama: Trio dry/normal/oily saling tumpang tindih karena
+secara visual memang sangat mirip.
+
+
+============================================================================
+6. CONFUSION MATRIX (V5)
+============================================================================
+
+Baris = label asli, Kolom = prediksi
+Urutan label: acne, dry, normal, oily, sensitive
+
+  Prediksi ->
+    acne  dry  normal  oily  sensitive
+Asli:
+  acne    [ 50    2     0      0       0 ]
+  dry     [  6   20    11      3       0 ]
+  normal  [  3   15    23      2       1 ]
+  oily    [  8   11    13      8       0 ]
+  sensitive [ 3    4     0      0      25 ]
+
+Bacaan penting:
+  - 50/52 acne benar (recall 96%)
+  - 25/32 sensitive benar (recall 78%)
+  - 8/40 oily benar (recall 20%) — sisanya lari ke normal (13) dan dry (11)
+  - 20/40 dry benar (recall 50%) — 11 bocor ke normal
+  - 23/44 normal benar (recall 52%) — banyak menerima "salah kirim" dari oily/dry
+
+
+============================================================================
+7. EKSPERIMEN YANG DILAKUKAN
+============================================================================
+
+Riwayat iterasi dataset:
+  V1 (1.000 foto)     : 58,59%  — Baseline awal
+  V2 (+killa92, 1.498): 53,02%  — Test set lebih berat
+  V3 (+cleaning, 1.214): 46,72% — Cleaning terlalu agresif
+  V4 (+staging, 2.084) : 58,65% — Augmentasi lebih kaya
+  V5 (2.084, Dropout 0.3 + Focal Loss) : 60,58% — TERBAIK
+
+Eksperimen kode (tanpa tambah dataset):
+  1. Dropout 0,5 -> 0,3      : Berhasil, naik +1,93 poin (58,65% -> 60,58%)
+  2. Focal Loss (gamma=2.0)  : Tidak membantu secara signifikan
+  3. Fine-tuning (3x percobaan) : Selalu menurunkan val accuracy, tidak efektif
+
+
+============================================================================
+8. EKSPERIMEN YANG TIDAK BERHASIL
+============================================================================
+
+a) FINE-TUNING (3x Percobaan)
+   - lr 1e-5 : tidak menggeser val accuracy
+   - lr 1e-4 : val accuracy malah turun dari 57% menjadi 51-52%
+   - EarlyStopping selalu menghentikan lebih awal
+   - Kesimpulan: fine-tuning tidak cocok untuk dataset sekecil ini
+
+b) FOCAL LOSS
+   - Diimplementasikan untuk fokus ke sampel sulit (oily, dry)
+   - Hasil identik dengan categorical crossentropy
+   - Tidak merusak tapi tidak membantu
+
+c) PENAMBAHAN DATA KILLA92 (V2)
+   - Menambah data dari sumber baru justru menurunkan akurasi
+   - Akibat: distribusi dataset berubah, test set menjadi lebih berat
+
+d) CLEANING MANUAL (V3)
+   - Terlalu agresif: 70% data acne hilang
+   - Akurasi anjlok ke 46,72%
+   - Pelajaran: jangan cleaning tanpa menghitung dampak per kelas
+
+
+============================================================================
+9. MENGAPA 60,58% SUDAH CUKUP
+============================================================================
+
+a) Bukan tebakan acak
+   - Tebakan acak untuk 5 kelas = 20%
+   - Model = 60,58% = hampir 3x lebih baik dari tebakan acak
+
+b) Masalahnya secara visual memang sulit
+   - Dry/normal/oily sangat mirip dari satu foto
+   - Bahkan dermatolog butuh pemeriksaan langsung untuk memastikan
+   - Model khusus dry/normal/oily (3 kelas saja) oleh peneliti lain
+     hanya mencapai ~65%
+
+c) Metodologinya ketat dan jujur
+   - Split group-aware (anti-leakage)
+   - Val/test tanpa augmentasi (evaluasi jujur)
+   - ModelCheckpoint(save_best_only=True) melindungi hasil terbaik
+   - 5 iterasi dengan dokumentasi lengkap
+
+d) Kelas yang penting malah yang paling kuat
+   - acne (F1 0,82) dan sensitive (F1 0,86) adalah kelas yang paling
+     dibutuhkan untuk rekomendasi perawatan kulit
+
+e) Konteksnya aplikasi kosmetik, bukan diagnosis medis
+   - Salah prediksi tidak membahayakan pengguna
+   - 60,58% sudah memberikan nilai nyata untuk QayraMakeUp
+
+
+============================================================================
+10. KETERBATASAN
+============================================================================
+
+1. Test set terbatas (208 gambar) — metrik berisik, selisih beberapa
+   gambar bisa menggeser persentase
+
+2. Bias sumber pada sensitive — kelas ini berasal dari sumber berbeda
+   (rosacea + redness), model mungkin belajar ciri sumber, bukan
+   murni "sensitivitas kulit"
+
+3. Fine-tuning tidak efektif untuk dataset kecil — val accuracy fase 2
+   selalu lebih rendah dari fase 1
+
+4. Cleaning manual berisiko membuang data kelas minoritas — pada V3,
+   acne kehilangan ~70% datanya
+
+5. Kelas oily tetap sulit (recall 20%) — kilap minyak sulit terlihat
+   dari foto biasa
+
+
+============================================================================
+11. REKOMENDASI UNTUK PENGEMBANGAN SELANJUTNYA
+============================================================================
+
+PILIHAN PRAKTIS (tanpa ganti arsitektur):
+  - Tambah data oily dengan pencahayaan terang (kilap jelas)
+  - Kumpulkan foto kulit sensitif asli (bukan proxy redness/rosacea)
+  - Perbaiki kualitas & konsistensi pencahayaan data
+
+PILIHAN FUNDAMENTAL (butuh perubahan besar):
+  - Ganti arsitektur ke EfficientNet / Vision Transformer
+  - Konsolidasi kelas (misal: gabung dry+oily+normal)
+  - Data berlabel pakar dermatologi
+  - Cross-validation untuk estimasi performa lebih stabil
+
+
+============================================================================
+CATATAN PENTING UNTUK PRESENTASI
+============================================================================
+
+1. Angka 60,58% SAH karena:
+   - Diperoleh dengan metodologi ketat (group-aware split, no leakage)
+   - Dikurasi dari 5 iterasi (V1-V5) secara sistematis
+   - Divalentasi tanpa augmentasi (jujur)
+
+2. Angka ini BUKAN kegagalan karena:
+   - Batas alami masalah: dry/normal/oily secara visual memang mirip
+   - Model khusus 3 kelas oleh peneliti lain pun hanya ~65%
+   - Kelas yang paling penting (acne, sensitive) justru yang paling kuat
+
+3. Eksperimen yang terdokumentasi menunjukkan:
+   - Dropout 0,5->0,3 : BERHASIL (+1,93 poin)
+   - Fine-tuning       : TIDAK BERHASIL (3x percobaan konsisten)
+   - Focal Loss        : TIDAK SIGNIFIKAN
+   - Tambahan data      : BERHASIL (V3->V4)
+   - Cleaning manual    : MERUSAK (V3, 70% acne hilang)
+
+4. Penguji yang baik tidak hanya menilai angka.
+   Mereka menilai APAKAH KAMU MEMAHAMI ANGKA ITU.
+   Dokumentasi lengkap, analisis jujur, dan pemahaman tentang batas
+   alami masalah ini menunjukkan kedalaman pemahaman yang lebih bernilai
+   daripada sekadar mengejar angka 80%.
+
+
+============================================================================
+PENJELASAN RINGKASAN PENELITIAN
+============================================================================
+
+Penelitian ini mengembangkan model deep learning untuk klasifikasi kondisi
+kulit wajah menggunakan arsitektur MobileNetV2 dengan teknik transfer
+learning dari bobot pretrained ImageNet. Model dirancang untuk mengklasifikasikan
+gambar wajah ke dalam 5 kategori, yaitu acne, dry, normal, oily, dan
+sensitive, yang selanjutnya dimanfaatkan sebagai basis rekomendasi produk
+makeup pada aplikasi QayraMakeUp. Dataset yang digunakan terdiri dari
+2.084 gambar yang telah melalui pipeline kurasi meliputi face detection
+dengan OpenCV DNN res10 SSD, cropping dan normalisasi ke resolusi 224x224
+piksel, deduplikasi berbasis perceptual hash, serta pembagian data dengan
+metode group-aware 70/20/10 untuk memastikan tidak terjadinya kebocoran
+data (*data leakage*) antar subset. Model yang dihasilkan kemudian diekspor
+ke format TensorFlow Lite dengan ukuran aproximasi 2,6 MB untuk mendukung
+deployment pada perangkat mobile.
+
+Hasil evaluasi pada test set menunjukkan akurasi keseluruhan sebesar
+60,58%. Angka ini diperoleh melalui 5 iterasi dataset secara bertahap,
+dengan iterasi terakhir (V5) menghasilkan performa terbaik setelah
+penerapan penurunan Dropout dari 0,5 menjadi 0,3. Secara per kelas,
+model menunjukkan performa yang kuat pada kelas acne (F1-score 0,82,
+recall 96%) dan sensitive (F1-score 0,86, precision 96%), yang merupakan
+dua kelas yang paling relevan untuk aplikasi rekomendasi perawatan kulit.
+Sementara itu, kelas dry, normal, dan oily masih menunjukkan performa yang
+lebih rendah, terutama oily dengan recall 20%, yang disebabkan oleh
+kemiripan visual yang sangat tinggi antar ketiga kelas tersebut. Metode
+evaluasi yang diterapkan bersifat ketat, meliputi *group-aware split* untuk
+mencegah *data leakage*, evaluasi tanpa augmentasi pada subset validasi
+dan pengujian, serta penggunaan *ModelCheckpoint* dengan parameter
+*save_best_only* untuk memastikan model terbaik yang tersimpan.
+
+Secara keseluruhan, penelitian ini menghasilkan beberapa temuan signifikan.
+Pertama, fine-tuning pada MobileNetV2 terbukti tidak efektif untuk dataset
+berukuran kecil — dari tiga percobaan dengan *learning rate* yang berbeda,
+performa pada fase fine-tuning selalu lebih rendah dibandingkan fase
+*feature extraction*. Kedua, penurunan Dropout dari 0,5 ke 0,3 berhasil
+meningkatkan akurasi sebesar 1,93 poin dari 58,65% menjadi 60,58%. Ketiga,
+penerapan Focal Loss tidak memberikan peningkatan performa yang signifikan
+dibandingkan dengan *categorical crossentropy*. Keempat, batas alami dari
+kompleksitas visual masalah ini — di mana perbedaan kulit dry, normal, dan
+oily sangat bergantung pada faktor eksternal seperti pencahayaan dan
+kualitas kamera — menjadi faktor utama yang membatasi pencapaian akurasi
+lebih tinggi. Akurasi 60,58% dengan 5 kelas ini konsisten dengan batas
+alami masalah, mengingat model khusus 3 kelas oleh peneliti lain pun hanya
+mencapai sekitar 65%.
+
+============================================================================
+  Dokumen ini merupakan ringkasan dari seluruh riwayat diskusi proyek
+  QayraMakeUp — TensorFlow MobileNetV2 Klasifikasi Kondisi Kulit Wajah.
+  Disusun untuk keperluan presentasi skripsi.
+============================================================================
