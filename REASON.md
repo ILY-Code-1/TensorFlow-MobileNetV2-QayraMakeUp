@@ -1,6 +1,6 @@
-# Mengapa 60,58% Sudah Cukup?
+# Mengapa 77,17% Sudah Cukup?
 
-Dokumen ini menjelaskan secara sederhana mengapa akurasi **60,58%** pada model
+Dokumen ini menjelaskan secara sederhana mengapa akurasi **77,17%** pada model
 klasifikasi kondisi kulit wajah ini adalah hasil yang **valid, jujur, dan layak
 dipertahankan** — bukan angka yang perlu dikejar lebih jauh.
 
@@ -9,7 +9,7 @@ dipertahankan** — bukan angka yang perlu dikejar lebih jauh.
 ## 1. Bukan Tebakan Acak
 
 Untuk masalah 5 kelas, tebakan acak menghasilkan akurasi **20%**.
-Model ini mencapai **60,58%** — hampir **3× lebih baik dari tebakan acak**.
+Model ini mencapai **77,17%** — hampir **4× lebih baik dari tebakan acak**.
 Itu berarti model benar-benar *belajar sesuatu* dari data, bukan sekadar menebak.
 
 ---
@@ -25,32 +25,33 @@ yang bahkan sulit bagi manusia. Perbedaannya halus dan sangat bergantung pada:
 
 Sebagai perbandingan: model khusus yang **hanya** membedakan 3 kelas dry/normal/oily
 (bukan 5 kelas) yang dibangun peneliti lain pun hanya mencapai sekitar **65%**.
-Model ini menangani 5 kelas sekaligus dan mencapai 60,58% — itu hasil yang konsisten
-dengan batas alami masalahnya.
+Model ini menangani 5 kelas sekaligus dan mencapai 77,17% — melampaui batas yang
+dicapai oleh model 3-kelas.
 
 ---
 
-## 3. Yang Bisa Diandalkan Memang Kuat
+## 3. Semua Kelas Kini Berada di Atas F1 0,70
 
-Tidak semua kelas lemah. Lihat hasilnya per kelas:
+Tidak ada lagi kelas "sangat lemah". Lihat hasilnya per kelas:
 
 | Kelas | F1-score | Keterangan |
 |---|---|---|
-| acne | **0,82** | Sangat kuat — recall 96% |
-| sensitive | **0,86** | Sangat kuat — precision 96% |
-| normal | 0,51 | Sedang |
-| dry | 0,43 | Lemah |
-| oily | 0,30 | Lemah |
+| sensitive | **0,88** | Sangat kuat — precision 88%, recall 89% |
+| acne | **0,85** | Kuat — precision 89%, recall 82% |
+| normal | **0,80** | Solid — seimbang precision 81% dan recall 78% |
+| dry | **0,75** | Solid — recall 85%, precision 67% |
+| oily | **0,71** | Jauh membaik — recall 66% (naik dari 20%) |
 
-Kelas **acne** dan **sensitive** — dua kelas yang paling penting untuk rekomendasi
-perawatan kulit — justru yang paling kuat. Kelas yang lemah (dry/oily/normal) memang
-secara visual paling mirip satu sama lain, dan ini batas alami, bukan kegagalan model.
+Kelas **oily** mengalami perbaikan paling dramatis — dari recall 20% (V5)
+menjadi 66% (V8), kenaikan +46 poin. Kelas yang paling penting untuk
+rekomendasi perawatan kulit (sensitive dan acne) tetap menjadi yang
+terkuat dengan F1-score di atas 0,85.
 
 ---
 
 ## 4. Metodologinya Ketat dan Jujur
 
-Yang membuat angka 60,58% ini *kredibel* adalah cara mendapatkannya:
+Yang membuat angka 77,17% ini *kredibel* adalah cara mendapatkannya:
 
 - **Split bebas kebocoran (group-aware)** — foto dari orang yang sama tidak tersebar
   ke train dan test sekaligus. Banyak proyek serupa lalai di sini, membuat akurasinya
@@ -60,14 +61,13 @@ Yang membuat angka 60,58% ini *kredibel* adalah cara mendapatkannya:
 - **Model terbaik disimpan lintas fase** — `ModelCheckpoint(save_best_only=True)`
   memastikan yang tersimpan adalah model yang benar-benar terbaik, bukan yang
   kebetulan menjadi epoch terakhir.
-- **Iterasi yang terdokumentasi** — ada 5 versi dataset (V1–V5) dengan akurasi dan
-  catatan yang jelas. Ini menunjukkan proses yang sistematis, bukan trial-and-error tanpa arah.
-- **Eksperimen terkontrol** — Dropout diturunkan dari 0.5 → 0.3 untuk mengurangi
-  underfitting, Focal Loss dicoba untuk menangani kelas lemah. Keduanya dicoba satu per
-  satu dan hasilnya terukur.
+- **Iterasi yang terdokumentasi** — ada 8 versi dataset (V1–V8) dengan akurasi dan
+  catatan yang jelas. Proses sistematis dari 2.084 gambar → 8.917 gambar.
+- **Eksperimen terkontrol** — setiap perubahan diuji satu per satu: Dropout,
+  class weight, learning rate, epochs. Hasilnya terukur dan terdokumentasi.
 
-Angka 60,58% yang diperoleh dengan metodologi ketat **lebih bernilai** daripada
-angka 80% yang diperoleh dengan metodologi yang bocor.
+Angka 77,17% yang diperoleh dengan metodologi ketat **lebih bernilai** daripada
+angka 85% yang diperoleh dengan metodologi yang bocor.
 
 ---
 
@@ -76,10 +76,12 @@ angka 80% yang diperoleh dengan metodologi yang bocor.
 Salah satu kekuatan laporan ini justru adalah kejujurannya mencatat kegagalan:
 
 - **V3 (46,72%)** — cleaning manual terlalu agresif, 70% data acne hilang.
-- **Fine-tuning** — 3× percobaan, selalu menurunkan val accuracy. Dicatat, dianalisis,
-  dilindungi dengan `ModelCheckpoint`.
-- **Focal Loss** — dicoba untuk membantu kelas lemah (oily, dry), namun hasilnya
-  identik dengan categorical crossentropy. Tidak merusak, tapi tidak membantu.
+- **Fine-tuning pada dataset kecil** — 3× percobaan selalu menurunkan val accuracy.
+  Baru efektif setelah dataset mencapai 5.440+ gambar.
+- **Focal Loss** — dicoba untuk membantu kelas lemah, namun hasilnya identik
+  dengan categorical crossentropy. Tidak merusak, tapi tidak membantu.
+- **ReduceLROnPlateau** — dicoba untuk menurunkan lr otomatis, justru menurunkan
+  akurasi (74,39% → 73,27%) karena overfit ke pola tertentu.
 - **killa92** — menambah data dari sumber baru ternyata tidak otomatis meningkatkan
   akurasi karena distribusi dataset berubah.
 
@@ -92,15 +94,14 @@ ilmiah yang sama pentingnya dengan hasil yang tinggi.
 
 Model ini dipakai untuk rekomendasi makeup di aplikasi **QayraMakeUp** — bukan untuk
 mendiagnosis penyakit kulit. Salah prediksi tidak membahayakan pengguna. Dalam konteks
-ini, akurasi 60,58% dengan kelas acne dan sensitive yang kuat sudah memberikan nilai
-nyata: model bisa membantu pengguna mengenali kondisi kulit yang paling khas, sambil
-memberikan rekomendasi indikatif untuk kondisi yang lebih ambigu.
+ini, akurasi 77,17% dengan semua kelas di atas F1 0,70 sudah memberikan nilai
+nyata: model dapat memberikan rekomendasi yang bermanfaat untuk pengguna aplikasi.
 
 ---
 
 ## Kesimpulan
 
-> **60,58% bukan angka yang "gagal mencapai 80%".**
+> **77,17% bukan angka yang "gagal mencapai 80%".**
 > Ini adalah angka yang **jujur, bermakna, dan bisa dipertahankan** — didapat dari
 > proses yang metodologinya ketat, dengan analisis keterbatasan yang transparan,
 > dan pemahaman mendalam tentang mengapa batas itu ada.

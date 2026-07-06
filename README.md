@@ -4,8 +4,8 @@ Project machine learning untuk klasifikasi kondisi kulit wajah menggunakan Tenso
 
 > 📄 **Detail lengkap Training & Evaluasi → [docs/LAPORAN_PROYEK.pdf](docs/LAPORAN_PROYEK.pdf)** — mencakup sumber dataset, pipeline kurasi, strategi anti-leakage kelas `sensitive`, hasil training, confusion matrix, analisis, riwayat iterasi, dan rekomendasi. (Sumber markdown: [docs/LAPORAN_PROYEK.md](docs/LAPORAN_PROYEK.md))
 
-> 🤔 **Mengapa 58,65% sudah cukup? → [REASON.md](REASON.md)**
-> — penjelasan sederhana mengapa hasil ini valid dan layak dipertahankan.
+> 🤔 **Mengapa 77,17% sudah cukup? → [REASON.md](REASON.md)**
+> — penjelasan sederhana mengapa hasil ini solid dan valid untuk aplikasi QayraMakeUp.
 
 ## 📋 Deskripsi
 
@@ -22,23 +22,24 @@ Mengklasifikasikan kondisi kulit wajah ke dalam 5 kategori:
 
 ## 📊 Hasil Training & Evaluasi
 
-**Akurasi terbaik: 60,58%** (V5 — dataset **2.084 gambar**, 5 kelas, test set 208 gambar, Dropout 0.3 + Focal Loss).
+**Akurasi terbaik: 77,17%** (V8 — dataset **8.917 gambar**, 5 kelas, test set 898 gambar, fine-tuning lr 5e-5).
 
 | Kelas | Precision | Recall | F1-score |
 |---|---|---|---|
-| acne | 0,71 | 0,96 | **0,82** |
-| dry | 0,38 | 0,50 | 0,43 |
-| normal | 0,49 | 0,52 | 0,51 |
-| oily | 0,62 | 0,20 | **0,30** |
-| sensitive | 0,96 | 0,78 | **0,86** |
+| acne | 0,89 | 0,82 | **0,85** |
+| dry | 0,67 | 0,85 | 0,75 |
+| normal | 0,81 | 0,78 | **0,80** |
+| oily | 0,77 | 0,66 | **0,71** |
+| sensitive | 0,88 | 0,89 | **0,88** |
 
-Kelas `acne` dan `sensitive` paling kuat & konsisten; trio
-`dry`/`normal`/`oily` saling tumpang-tindih (kini `oily` terlemah, recall 0,20).
+Semua kelas kini di atas F1 0,70 — tidak ada lagi kelas "sangat lemah" seperti
+iterasi awal. Oily (F1 0,71, recall 66%) dan dry (F1 0,75, recall 85%)
+mengalami perbaikan paling signifikan.
 
-> ⚙️ **Catatan:** Dropout diturunkan dari 0.5 → 0.3 untuk mengurangi underfitting di validasi.
-> Focal Loss ditambahkan untuk menangani kelas lemah, namun hasilnya identik dengan
-> categorical crossentropy. Fine-tuning tetap aktif tetapi tidak efektif — model terbaik
-> berasal dari fase 1.
+> ⚙️ **Catatan:** Fine-tuning dengan learning rate 5e-5 (20 epoch) terbukti
+> efektif — model terbaik berasal dari fase 2 (fine-tune). Class weight
+> di-clamp [0.8–1.5] untuk menstabilkan training. EPOCHS fase 1 dinaikkan
+> ke 30 dengan EarlyStopping patience=7.
 
 Pembahasan lengkap, confusion matrix, keterbatasan, dan rekomendasi ada di
 **[docs/LAPORAN_PROYEK.pdf](docs/LAPORAN_PROYEK.pdf)**.
@@ -53,7 +54,10 @@ Penjelasan mengapa akurasi ini valid dan cukup ada di **[REASON.md](REASON.md)**
 | V2 | 1.498 foto | 53,02% | +killa92 — test set lebih berat & beragam |
 | V3 | 1.214 foto | 46,72% | +cleaning manual — terlalu agresif di `acne` |
 | V4 | 2.084 foto | 58,65% | +staging baru — augmentasi lebih kaya |
-| **V5** | **2.084 foto** | **60,58%** | **Dropout 0.3 + Focal Loss (terbaik)** |
+| V5 | 2.084 foto | 60,58% | Dropout 0.3 + Focal Loss |
+| V6 | ~5.440 foto | 71,22% | +Kaggle Batch 1 — lompatan terbesar (+10,64) |
+| V7 | 8.917 foto | 74,39% | +Kaggle Batch 2 + cap class weight |
+| **V8** | **8.917 foto** | **77,17%** | **Fine-tuning lr 5e-5 + 20 epoch (terbaik)** |
 
 ## 🛠️ Tech Stack
 
@@ -79,8 +83,8 @@ Penjelasan mengapa akurasi ini valid dan cukup ada di **[REASON.md](REASON.md)**
 
 ### Fine-Tuning
 - Unfreeze 50 layer terakhir dari base model
-- Training tambahan dengan learning rate 1e-4
-- Mengoptimalkan performa pada dataset spesifik
+- Training tambahan dengan learning rate 5e-5
+- Terbukti efektif setelah dataset cukup besar (5.440+ gambar)
 
 ## 🔄 Workflow
 
@@ -99,18 +103,18 @@ Penjelasan mengapa akurasi ini valid dan cukup ada di **[REASON.md](REASON.md)**
 - **Rescaling**: Normalisasi pixel ke [0, 1]
 
 ### 3. Training — Fase 1 (Initial)
-- Epochs: maks **20** (EarlyStopping patience=5)
+- Epochs: maks **30** (EarlyStopping patience=7)
 - Optimizer: Adam (lr default)
 - Loss: Focal Loss (gamma=2.0)
 - Base model dalam kondisi frozen
 - Augmentasi: rotasi ±20°, zoom 20%, horizontal flip, brightness [0.8–1.2], shift 10%, shear 10%
 
 ### 4. Training — Fase 2 (Fine-Tuning)
-- Epochs: maks **10** (EarlyStopping patience=5)
-- Learning rate: **1e-4**
+- Epochs: maks **20** (EarlyStopping patience=5)
+- Learning rate: **5e-5**
 - Loss: Focal Loss (gamma=2.0)
 - 50 layer terakhir base model di-unfreeze
-- **Catatan**: terbukti tidak menaikkan val accuracy secara signifikan; model terbaik selalu dari fase 1
+- **Catatan**: terbukti efektif memberikan peningkatan +2,78 poin
 
 ### 5. Export ke TFLite
 - Convert model Keras ke TensorFlow Lite format
@@ -168,8 +172,8 @@ python train.py
 
 Script ini akan:
 - Load dan augmentasi data dari folder `dataset/`
-- Train fase 1: maks 20 epoch (EarlyStopping) dengan Focal Loss
-- Fine-tune fase 2: maks 10 epoch (EarlyStopping, tidak efektif) dengan Focal Loss
+- Train fase 1: maks 30 epoch (EarlyStopping patience=7) dengan Focal Loss
+- Fine-tune fase 2: maks 20 epoch (EarlyStopping patience=5) dengan Focal Loss, lr 5e-5
 - Simpan model terbaik global ke `skin_model_finetuned.h5` (ModelCheckpoint `save_best_only=True`)
 
 ### 3. Export ke TFLite
@@ -205,15 +209,15 @@ Keunggulan TFLite:
 
 ## 📊 Dataset Info
 
-- **Total Images**: 2.084 gambar (dataset final V4)
+- **Total Images**: 8.917 gambar (dataset final V8)
 - **Image Size**: di-resize ke 224×224
 - **Split Ratio**:
-  - Training: 70% — 1.456 gambar
-  - Validation: 20% — 420 gambar
-  - Test: 10% — 208 gambar
+  - Training: 70% — 6.229 gambar
+  - Validation: 20% — 1.785 gambar
+  - Test: 10% — 903 gambar
 - **Classes**: 5 kelas (acne, dry, normal, oily, sensitive)
-- **Distribusi per kelas**: acne 570, dry 425, normal 413, oily 413, sensitive 263 (tidak seimbang — ditangani `class_weight`)
-- **Hasil terbaik**: 60,58% (V5 — Dropout 0.3 + Focal Loss)
+- **Distribusi per kelas**: acne 804, dry 2.070, normal 2.905, oily 2.553, sensitive 585 (tidak seimbang — ditangani `class_weight` clamped [0.8–1.5])
+- **Hasil terbaik**: 77,17% (V8 — Fine-tuning lr 5e-5 + 20 epoch)
 
 ## ⚠️ Limitasi Model
 

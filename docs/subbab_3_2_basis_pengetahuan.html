@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8">
+  <title>3.2 Basis Pengetahuan</title>
+  <style>
+    body {
+      font-family: 'Times New Roman', serif;
+      line-height: 1.8;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+      color: #222;
+    }
+
+    h2 {
+      text-align: center;
+      font-size: 1.3em;
+      margin: 30px 0 10px;
+    }
+
+    h3 {
+      font-size: 1.1em;
+      margin: 24px 0 8px;
+      border-bottom: 1px solid #999;
+      padding-bottom: 4px;
+    }
+
+    p {
+      text-align: justify;
+      margin: 10px 0;
+      text-indent: 30px;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 12px 0;
+      font-size: 0.9em;
+    }
+
+    th,
+    td {
+      border: 1px solid #555;
+      padding: 6px 8px;
+      text-align: center;
+    }
+
+    th {
+      background: #eee;
+    }
+
+    .plantuml-block, .mermaid-block {
+      background: #fafafa;
+      border: 1px dashed #aaa;
+      padding: 12px;
+      margin: 12px 0;
+      text-align: center;
+      font-family: monospace;
+      font-size: 0.85em;
+      white-space: pre;
+      overflow-x: auto;
+    }
+
+    .figure-caption {
+      text-align: center;
+      font-size: 0.85em;
+      margin-top: -8px;
+      color: #555;
+    }
+
+    .placeholder {
+      background: #fffbe6;
+      border: 1px dashed #c90;
+      padding: 6px 10px;
+      margin: 8px 0;
+      font-size: 0.8em;
+      color: #864;
+    }
+
+    pre.code {
+      background: #f4f4f4;
+      border: 1px solid #ccc;
+      padding: 10px;
+      font-size: 0.82em;
+      overflow-x: auto;
+    }
+
+    code {
+      font-family: 'Courier New', monospace;
+      background: #f0f0f0;
+      padding: 1px 4px;
+    }
+
+    .rumus {
+      text-align: center;
+      margin: 12px 0;
+      font-style: italic;
+    }
+
+    ol {
+      margin: 8px 0 8px 30px;
+    }
+
+    li {
+      margin: 4px 0;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h2>3.2 Basis Pengetahuan</h2>
+
+  <!-- =================================================================== -->
+  <section id="3.2.1">
+    <h3>3.2.1 Transfer Learning MobileNetV2</h3>
+
+    <p>
+      Transfer learning merupakan salah satu teknik dalam <em>deep learning</em> di mana model yang telah dilatih
+      sebelumnya (<em>pre-trained model</em>) pada suatu dataset berskala besar dimanfaatkan kembali untuk menyelesaikan
+      tugas yang berbeda namun memiliki domain visual yang serupa. Alih-alih melatih model dari nol — yang membutuhkan
+      jumlah data dan sumber daya komputasi yang sangat besar — transfer learning memungkinkan pemanfaatan representasi
+      fitur yang telah dipelajari oleh model <em>pre-trained</em> tersebut. Teknik ini sangat relevan untuk klasifikasi
+      kondisi kulit wajah karena beberapa alasan: (1) dataset citra kulit wajah masih relatif terbatas dibandingkan
+      dengan dataset berskala besar seperti ImageNet; (2) model <em>pre-trained</em> pada ImageNet telah mempelajari
+      fitur-fitur dasar seperti tekstur, tepi, dan pola visual yang juga relevan untuk membedakan kondisi kulit; serta
+      (3) waktu pelatihan menjadi jauh lebih singkat karena bobot awal model telah berada dalam posisi yang baik untuk
+      melakukan ekstraksi fitur.
+    </p>
+
+    <p>
+      Arsitektur yang digunakan sebagai <em>base model</em> dalam penelitian ini adalah <strong>MobileNetV2</strong>,
+      yang dikembangkan oleh Sandler et al. (2018). MobileNetV2 merupakan pengembangan dari MobileNetV1 yang
+      memperkenalkan dua konsep kunci: <em>inverted residuals</em> dan <em>linear bottlenecks</em>. Keduanya dirancang
+      untuk menghasilkan model yang ringan namun tetap memiliki akurasi yang kompetitif, sehingga sangat cocok untuk
+      dijalankan pada perangkat dengan sumber daya terbatas seperti <em>smartphone</em>.
+    </p>
+
+    <p><strong>a. Depthwise Separable Convolution</strong></p>
+
+    <p>
+      MobileNetV2 dibangun di atas blok <em>depthwise separable convolution</em>, yang memecah operasi konvolusi standar
+      menjadi dua tahap terpisah: <em>depthwise convolution</em> dan <em>pointwise convolution</em>. Pada konvolusi
+      standar, sebuah filter berukuran <em>D<sub>k</sub> × D<sub>k</sub> × M</em> (tinggi × lebar × channel input)
+      melakukan operasi sekaligus terhadap seluruh channel input, menghasilkan satu nilai pada setiap posisi spasial.
+      Proses ini diulangi sebanyak <em>N</em> filter untuk menghasilkan <em>N</em> channel output, sehingga biaya
+      komputasinya adalah:
+    </p>
+
+    <div class="rumus">
+      <strong>Biaya konvolusi standar</strong> = <em>D<sub>k</sub> · D<sub>k</sub> · M · N · D<sub>f</sub> ·
+        D<sub>f</sub></em>
+    </div>
+
+    <p>
+      Di mana <em>D<sub>k</sub></em> adalah ukuran kernel, <em>M</em> adalah jumlah channel input, <em>N</em> adalah
+      jumlah channel output, dan <em>D<sub>f</sub></em> adalah ukuran spasial dari <em>feature map</em>. Sebaliknya,
+      <em>depthwise separable convolution</em> memisahkan filtering dan penggabungan channel:
+    </p>
+
+    <p>
+      Tahap <em>depthwise</em>: setiap filter berukuran <em>D<sub>k</sub> × D<sub>k</sub> × 1</em> hanya beroperasi pada
+      satu channel input, menghasilkan biaya:
+    </p>
+
+    <div class="rumus">
+      <strong>Biaya depthwise</strong> = <em>D<sub>k</sub> · D<sub>k</sub> · M · D<sub>f</sub> · D<sub>f</sub></em>
+    </div>
+
+    <p>
+      Tahap <em>pointwise</em>: konvolusi 1×1 menggabungkan hasil dari seluruh channel menggunakan <em>N</em> filter,
+      menghasilkan biaya:
+    </p>
+
+    <div class="rumus">
+      <strong>Biaya pointwise</strong> = <em>M · N · D<sub>f</sub> · D<sub>f</sub></em>
+    </div>
+
+    <p>
+      Total biaya <em>depthwise separable convolution</em> adalah penjumlahan keduanya, dan rasio penghematan terhadap
+      konvolusi standar adalah:
+    </p>
+
+    <div class="rumus">
+      <strong>Rasio penghematan</strong> = (<em>D<sub>k</sub> · D<sub>k</sub> · M · D<sub>f</sub> · D<sub>f</sub></em> +
+      <em>M · N · D<sub>f</sub> · D<sub>f</sub></em>) / (<em>D<sub>k</sub> · D<sub>k</sub> · M · N · D<sub>f</sub> ·
+        D<sub>f</sub></em>) = <strong>1/N + 1/D<sub>k</sub><sup>2</sup></strong>
+    </div>
+
+    <p>
+      Untuk kernel 3×3 (<em>D<sub>k</sub>=3</em>), penghematan mencapai sekitar 8–9 kali lipat dibandingkan konvolusi
+      standar, tanpa kehilangan akurasi yang signifikan.
+    </p>
+
+    <p><strong>b. Inverted Residual dan Linear Bottleneck</strong></p>
+
+    <p>
+      MobileNetV2 memperkenalkan struktur <em>inverted residual block</em> yang "berkebalikan" dari <em>residual
+        block</em> konvensional (seperti pada ResNet). Alih-alih memampatkan dimensi channel terlebih dahulu (seperti
+      pada ResNet), MobileNetV2 justru <strong>memperluas</strong> dimensi channel menggunakan <em>expansion factor
+        t</em> (umumnya <em>t=6</em>), kemudian menerapkan <em>depthwise convolution</em>, dan terakhir memproyeksikan
+      kembali ke dimensi yang lebih kecil melalui <em>pointwise convolution</em>. Struktur ini digambarkan sebagai
+      <em>expand → depthwise → project</em>.
+    </p>
+
+    <p>
+      <em>Linear bottleneck</em> merujuk pada penghilangan fungsi aktivasi non-linear (ReLU) pada layer proyeksi
+      terakhir dari setiap blok. Hal ini didasari oleh temuan bahwa ReLU dapat menghancurkan informasi pada ruang
+      dimensi rendah (<em>manifold of interest</em>). Dengan menggunakan aktivasi linear pada layer proyeksi, informasi
+      yang penting dapat dipertahankan untuk diproses oleh layer berikutnya.
+    </p>
+
+    <p><strong>c. Alur Data Arsitektur</strong></p>
+
+    <div class="plantuml-block">
+@startuml
+rectangle "Input\n224x224x3" as A
+rectangle "Conv2D\n32, 3x3, s=2" as B
+rectangle "Bottleneck x1\nt=1, c=16" as C
+rectangle "Bottleneck x2\nt=6, c=24" as D
+rectangle "Bottleneck x3\nt=6, c=32" as E
+rectangle "Bottleneck x4\nt=6, c=64" as F
+rectangle "Bottleneck x3\nt=6, c=96" as G
+rectangle "Bottleneck x3\nt=6, c=160" as H
+rectangle "Conv2D\n1280, 1x1" as I
+rectangle "GlobalAverage\nPooling2D" as J
+rectangle "Dense\n128, ReLU" as K
+rectangle "Dropout\n0.3" as L
+rectangle "Dense\n5, Softmax" as M
+rectangle "Output\nacne/dry/normal/\noily/sensitive" as N
+
+A -down-> B
+B -down-> C
+C -down-> D
+D -down-> E
+E -down-> F
+F -down-> G
+G -down-> H
+H -down-> I
+I -down-> J
+J -down-> K
+K -down-> L
+L -down-> M
+M -down-> N
+@enduml
+    </div>
+    <div class="figure-caption">Gambar 3.2 Diagram Alur Arsitektur MobileNetV2 dengan Custom Head</div>
+
+    <p>
+      Struktur di atas menunjukkan bahwa model menerima input citra RGB berukuran 224×224 piksel. Input diproses melalui
+      layer konvolusi awal, kemudian melewati 17 blok <em>bottleneck residual</em> yang tersusun dalam 6 tahap dengan
+      konfigurasi <em>expansion factor t</em> dan jumlah channel output yang semakin meningkat. Setelah feature map
+      terakhir melewati konvolusi 1×1 (Conv2D 1280) dan <em>GlobalAveragePooling2D</em>, vektor fitur hasil ekstraksi
+      dimasukkan ke <em>custom head</em> yang terdiri dari layer Dense 128 neuron (aktivasi ReLU), Dropout 0.3 untuk
+      regularisasi, dan layer output Dense 5 neuron dengan aktivasi Softmax.
+    </p>
+  </section>
+
+  <!-- =================================================================== -->
+  <section id="3.2.2">
+    <h3>3.2.2 Dataset Klasifikasi Kondisi Kulit Wajah</h3>
+
+    <p>
+      Dataset yang digunakan dalam penelitian ini merupakan dataset hibrida yang bersumber dari beberapa repositori
+      publik pada platform <strong>Kaggle</strong> dan <strong>Roboflow Universe</strong>. Pengumpulan data dilakukan
+      dalam dua gelombang (<em>batch</em>) utama untuk secara bertahap memperkaya jumlah dan keragaman citra. Proses
+      kurasi data mencakup beberapa tahapan kritis: deteksi wajah (<em>face detection</em>) menggunakan OpenCV DNN (SSD
+      ResNet-10) untuk memastikan hanya citra yang mengandung area wajah yang disertakan, <em>cropping</em> dan
+      normalisasi ukuran ke resolusi 224×224 piksel, serta deduplikasi berbasis <em>perceptual hash</em> untuk
+      menghilangkan citra yang identik atau sangat mirip. Secara keseluruhan, dataset final yang digunakan dalam
+      penelitian ini terdiri dari <strong>8.917 citra</strong> yang terdistribusi ke dalam 5 kelas kondisi kulit wajah.
+    </p>
+
+    <p>
+      Pembagian dataset dilakukan dengan pendekatan <strong><em>group-aware split</em></strong> (70% training, 20%
+      validation, 10% testing). Pendekatan ini memastikan bahwa seluruh citra yang berasal dari subjek atau grup yang
+      sama (misalnya, beberapa foto dari satu individu atau hasil augmentasi dari satu citra asli) ditempatkan pada
+      subset yang sama, sehingga mencegah kebocoran data (<em>data leakage</em>) yang dapat menghasilkan estimasi
+      akurasi yang tidak jujur. Tabel berikut menunjukkan distribusi citra per kelas pada masing-masing subset:
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>No</th>
+          <th>Kelas (Label)</th>
+          <th>Train</th>
+          <th>Validation</th>
+          <th>Test</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td>Acne (Berjerawat)</td>
+          <td>565</td>
+          <td>162</td>
+          <td>77</td>
+          <td><strong>804</strong></td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>Dry (Kering)</td>
+          <td>1.445</td>
+          <td>417</td>
+          <td>208</td>
+          <td><strong>2.070</strong></td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>Normal</td>
+          <td>2.029</td>
+          <td>580</td>
+          <td>296</td>
+          <td><strong>2.905</strong></td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td>Oily (Berminyak)</td>
+          <td>1.785</td>
+          <td>511</td>
+          <td>257</td>
+          <td><strong>2.553</strong></td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td>Sensitive (Sensitif)</td>
+          <td>405</td>
+          <td>115</td>
+          <td>65</td>
+          <td><strong>585</strong></td>
+        </tr>
+        <tr>
+          <td colspan="2"><strong>Total</strong></td>
+          <td><strong>6.229</strong></td>
+          <td><strong>1.785</strong></td>
+          <td><strong>903</strong></td>
+          <td><strong>8.917</strong></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="figure-caption">Tabel 3.1 Distribusi Dataset per Kelas pada Setiap Subset</div>
+
+    <p>
+      Terlihat bahwa dataset tidak seimbang (<em>imbalanced</em>): kelas <em>normal</em> dan <em>oily</em> memiliki
+      jumlah citra yang jauh lebih banyak dibandingkan kelas <em>acne</em> dan <em>sensitive</em>. Untuk mengatasi
+      ketidakseimbangan ini, digunakan teknik <em>class weighting</em> yang dihitung secara dinamis dari jumlah sampel
+      aktual pada data training. Bobot setiap kelas dihitung dengan rumus <code>total / (num_classes × count)</code>,
+      namun untuk mencegah bobot yang terlalu ekstrem, nilai bobot dibatasi (<em>clamped</em>) pada rentang
+      <strong>[0.8, 1.5]</strong>. Dengan pembatasan ini, kelas minoritas mendapatkan bobot yang lebih tinggi (maksimum
+      1.5) sehingga kesalahan prediksi pada kelas tersebut memberikan penalti yang lebih besar, sementara kelas
+      mayoritas tidak diabaikan begitu saja.
+    </p>
+
+    <p><strong>Preprocessing dan Augmentasi Data</strong></p>
+
+    <p>
+      Sebelum dimasukkan ke dalam model, setiap citra melalui tahapan <em>preprocessing</em> sebagai berikut:
+    </p>
+
+    <ol>
+      <li><strong>Resize ke 224×224 piksel</strong> — menyesuaikan dengan ukuran input standar MobileNetV2.</li>
+      <li><strong>Normalisasi nilai piksel</strong>: setiap piksel diskalakan ke rentang [0, 1] dengan rumus
+        <code>rescale = 1/255</code>. Ini mempercepat konvergensi model karena nilai berada dalam rentang yang
+        kompatibel dengan bobot <em>pre-trained</em> ImageNet.
+      </li>
+      <li><strong>Augmentasi data</strong> (hanya pada subset training): serangkaian transformasi acak diterapkan untuk
+        meningkatkan keragaman data training dan mengurangi risiko <em>overfitting</em>.</li>
+    </ol>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Parameter Augmentasi</th>
+          <th>Nilai</th>
+          <th>Keterangan</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>rotation_range</code></td>
+          <td>20°</td>
+          <td>Rotasi acak ±20 derajat</td>
+        </tr>
+        <tr>
+          <td><code>zoom_range</code></td>
+          <td>0.2</td>
+          <td>Zoom in/out hingga 20%</td>
+        </tr>
+        <tr>
+          <td><code>horizontal_flip</code></td>
+          <td>True</td>
+          <td>Pembalikan horizontal acak</td>
+        </tr>
+        <tr>
+          <td><code>brightness_range</code></td>
+          <td>[0.8, 1.2]</td>
+          <td>Variasi kecerahan ±20%</td>
+        </tr>
+        <tr>
+          <td><code>width_shift_range</code></td>
+          <td>0.1</td>
+          <td>Pergeseran horizontal 10%</td>
+        </tr>
+        <tr>
+          <td><code>height_shift_range</code></td>
+          <td>0.1</td>
+          <td>Pergeseran vertikal 10%</td>
+        </tr>
+        <tr>
+          <td><code>shear_range</code></td>
+          <td>0.1</td>
+          <td>Distorsi geser 10%</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="figure-caption">Tabel 3.2 Parameter Augmentasi Data</div>
+
+    <p>
+      Perlu dicatat bahwa augmentasi hanya diterapkan pada subset <em>training</em> — subset <em>validation</em> dan
+      <em>testing</em> hanya melalui tahap normalisasi (<code>rescale=1/255</code>) tanpa augmentasi apapun. Hal ini
+      memastikan bahwa hasil evaluasi benar-benar mencerminkan performa model pada citra asli yang belum dimanipulasi.
+    </p>
+
+    <div class="placeholder">
+      <p>
+        [TEMPEL GAMBAR: sample_citra_per_kelas.png — contoh citra wajah untuk masing-masing kelas (Acne, Dry, Normal,
+        Oily, Sensitive)]
+      </p>
+    </div>
+
+  </section>
+
+  <!-- =================================================================== -->
+  <section id="3.2.3">
+    <h3>3.2.3 Arsitektur dan Konfigurasi Model</h3>
+
+    <p>
+      Model klasifikasi yang dibangun dalam penelitian ini mengadopsi pendekatan <em>two-phase training</em>: Fase 1
+      <em>feature extraction</em> dan Fase 2 <em>fine-tuning</em>. Berikut adalah detail dari arsitektur dan konfigurasi
+      yang digunakan.
+    </p>
+
+    <p><strong>a. Base Model dan Custom Head</strong></p>
+
+    <p>
+      <em>Base model</em> yang digunakan adalah <strong>MobileNetV2</strong> dengan bobot yang telah dilatih pada
+      dataset ImageNet (<em>weights='imagenet'</em>). Parameter <code>include_top=False</code> digunakan untuk membuang
+      layer klasifikasi asli ImageNet (1.000 kelas), sehingga yang tersisa hanya layer-layer <em>feature
+        extraction</em>. Pada Fase 1, seluruh layer <em>base model</em> dibekukan (<code>trainable=False</code>)
+      sehingga hanya <em>custom head</em> yang dilatih. <em>Custom head</em> terdiri dari layer-layer sebagai berikut:
+    </p>
+
+    <div class="rumus">
+      <strong>Custom Head:</strong> GlobalAveragePooling2D → Dense(128, ReLU) → Dropout(0.3) → Dense(5, Softmax)
+    </div>
+
+    <p>
+      <strong>GlobalAveragePooling2D</strong> mengubah tensor 3D hasil <em>feature extraction</em> (berdimensi
+      <em>7×7×1280</em>) menjadi vektor 1D sepanjang 1.280 elemen melalui operasi rata-rata spasial. Vektor ini kemudian
+      dimasukkan ke <strong>Dense layer</strong> dengan 128 neuron dan aktivasi ReLU untuk mempelajari kombinasi fitur
+      non-linear. <strong>Dropout</strong> dengan laju 0.3 diterapkan untuk mencegah <em>overfitting</em> — nilai ini
+      diturunkan dari 0.5 setelah observasi bahwa Dropout yang terlalu agresif menyebabkan <em>underfitting</em> pada
+      data validasi (selisih akurasi training vs validasi yang terlalu besar). Terakhir, <strong>Dense layer</strong>
+      dengan 5 neuron dan aktivasi Softmax menghasilkan probabilitas prediksi untuk masing-masing kelas.
+    </p>
+
+    <p>
+      Fungsi aktivasi Softmax didefinisikan sebagai:
+    </p>
+
+    <div class="rumus">
+      <strong>Softmax(z<sub>i</sub>)</strong> = <em>e<sup>z<sub>i</sub></sup> / &Sigma;<sub>j</sub>
+        e<sup>z<sub>j</sub></sup></em>
+    </div>
+
+    <p>
+      Di mana <em>z<sub>i</sub></em> adalah logit (nilai sebelum aktivasi) untuk kelas <em>i</em>, dan penyebut
+      menjumlahkan eksponensial dari seluruh logit. Softmax memastikan bahwa kelima nilai output berjumlah 1 dan dapat
+      diinterpretasikan sebagai probabilitas.
+    </p>
+
+    <p><strong>b. Konfigurasi Training</strong></p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Parameter</th>
+          <th>Nilai</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Input Shape</td>
+          <td>(224, 224, 3)</td>
+        </tr>
+        <tr>
+          <td>Base Model</td>
+          <td>MobileNetV2 (bobot ImageNet, include_top=False)</td>
+        </tr>
+        <tr>
+          <td>Custom Layer 1</td>
+          <td>GlobalAveragePooling2D</td>
+        </tr>
+        <tr>
+          <td>Custom Layer 2</td>
+          <td>Dense (128 neuron, aktivasi ReLU)</td>
+        </tr>
+        <tr>
+          <td>Custom Layer 3</td>
+          <td>Dropout (0.3)</td>
+        </tr>
+        <tr>
+          <td>Custom Layer 4</td>
+          <td>Dense (5 neuron, aktivasi Softmax)</td>
+        </tr>
+        <tr>
+          <td>Optimizer (Fase 1)</td>
+          <td>Adam (learning rate default)</td>
+        </tr>
+        <tr>
+          <td>Optimizer (Fase 2)</td>
+          <td>Adam (learning rate = 0.00005)</td>
+        </tr>
+        <tr>
+          <td>Loss Function</td>
+          <td>Focal Loss (gamma = 2.0)</td>
+        </tr>
+        <tr>
+          <td>Batch Size</td>
+          <td>32</td>
+        </tr>
+        <tr>
+          <td>Epochs (Fase 1)</td>
+          <td>30 (dengan EarlyStopping patience=7)</td>
+        </tr>
+        <tr>
+          <td>Epochs (Fase 2)</td>
+          <td>20 (dengan EarlyStopping patience=5)</td>
+        </tr>
+        <tr>
+          <td>Layer Fine-tuning</td>
+          <td>50 layer terakhir unfreeze</td>
+        </tr>
+        <tr>
+          <td>Class Weight</td>
+          <td>Clamped [0.8, 1.5]</td>
+        </tr>
+        <tr>
+          <td>Callback</td>
+          <td>EarlyStopping, ModelCheckpoint (save_best_only)</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="figure-caption">Tabel 3.3 Konfigurasi Training Model</div>
+
+    <p><strong>c. Focal Loss sebagai Fungsi Kerugian</strong></p>
+
+    <p>
+      Penelitian ini menggunakan <strong>Focal Loss</strong> sebagai fungsi kerugian (<em>loss function</em>)
+      menggantikan <em>Categorical Crossentropy</em> standar. Focal Loss diperkenalkan oleh Lin et al. (2017) untuk
+      menangani masalah ketidakseimbangan kelas dalam klasifikasi. Fungsi ini memberikan bobot yang lebih besar pada
+      sampel yang sulit diklasifikasikan (<em>hard examples</em>) melalui parameter <em>gamma</em>, dan bobot yang lebih
+      kecil pada sampel yang mudah (<em>easy examples</em>). Rumus Focal Loss untuk klasifikasi multi-kelas adalah:
+    </p>
+
+    <div class="rumus">
+      <strong>FL(p<sub>t</sub>)</strong> = <em>&minus;&alpha;<sub>t</sub> (1 &minus; p<sub>t</sub>)<sup>&gamma;</sup>
+        log(p<sub>t</sub>)</em>
+    </div>
+
+    <p>
+      Di mana <em>p<sub>t</sub></em> adalah probabilitas prediksi untuk kelas yang benar, <em>&gamma;</em> (gamma)
+      adalah <em>focusing parameter</em> yang mengontrol seberapa besar penekanan diberikan pada sampel sulit, dan
+      <em>&alpha;<sub>t</sub></em> adalah faktor pemberat kelas. Dalam implementasi penelitian ini, nilai gamma
+      ditetapkan sebesar <strong>2.0</strong> dan pemberat kelas ditangani secara terpisah melalui
+      <code>class_weight</code> yang dihitung dari distribusi data training.
+    </p>
+
+    <p><strong>d. Konversi ke TensorFlow Lite</strong></p>
+
+    <p>
+      Setelah model dilatih dan dievaluasi, model disimpan dalam format HDF5 (<code>skin_model_finetuned.h5</code>)
+      kemudian dikonversi ke format <strong>TensorFlow Lite</strong> (<code>skin_condition.tflite</code>) menggunakan
+      <code>TFLiteConverter.from_keras_model()</code> dengan optimasi <code>tf.lite.Optimize.DEFAULT</code>. Konversi
+      ini bertujuan untuk menghasilkan model yang ringan (~2.6 MB dari semula ~26 MB) dan dapat diintegrasikan ke dalam
+      aplikasi berbasis web melalui TensorFlow.js untuk inferensi <em>on-device</em>. Proses inferensi secara konseptual
+      berjalan sebagai berikut:
+    </p>
+
+    <pre class="code">
+1. Kamera/upload menangkap gambar wajah pengguna
+2. Gambar di-resize ke 224×224 dan dinormalkan (÷255)
+3. Gambar dimasukkan ke model TFLite untuk inferensi
+4. Model menghasilkan probabilitas untuk 5 kelas kulit
+5. Kelas dengan probabilitas tertinggi dipilih sebagai hasil
+6. Hasil digunakan oleh aplikasi untuk rekomendasi produk makeup
+</pre>
+
+  </section>
+
+  <!-- =================================================================== -->
+  <section id="3.2.4">
+    <h3>3.2.4 Proses Pelatihan dan Pengujian Model</h3>
+
+    <p>
+      Proses pelatihan model dilakukan dalam dua tahap (<em>two-phase training</em>) yang terstruktur secara sekuensial.
+      Pembagian menjadi dua tahap ini didasarkan pada prinsip transfer learning: tahap pertama membiarkan model belajar
+      fitur-fitur spesifik domain tanpa mengganggu representasi dasar dari ImageNet, sementara tahap kedua secara halus
+      menyesuaikan (<em>fine-tune</em>) layer-layer terdalam dari base model agar lebih selaras dengan karakteristik
+      dataset kulit wajah.
+    </p>
+
+    <p><strong>Fase 1 — Feature Extraction (Base Model Frozen)</strong></p>
+
+    <p>
+      Pada fase ini, seluruh 154 layer dari MobileNetV2 dibekukan (<code>trainable=False</code>). Hanya 4 layer
+      <em>custom head</em> yang memiliki parameter yang dapat diperbarui (<em>trainable</em>). Optimizer Adam digunakan
+      dengan <em>learning rate</em> default (0.001), dan model dilatih hingga maksimal 30 epoch. Callback
+      <code>EarlyStopping</code> dengan <em>patience=7</em> memonitor <em>validation accuracy</em> — jika setelah 7
+      epoch berturut-turut tidak ada peningkatan, pelatihan dihentikan dan bobot terbaik dipulihkan.
+      <code>ModelCheckpoint</code> dengan parameter <code>save_best_only=True</code> memastikan hanya model dengan
+      <em>val_accuracy</em> tertinggi yang disimpan. Fase 1 secara tipikal berhenti pada epoch 27–30 dengan
+      <em>val_accuracy</em> sekitar 63–65%.
+    </p>
+
+    <p><strong>Fase 2 — Fine-Tuning</strong></p>
+
+    <p>
+      Memasuki fase ini, seluruh layer base model diaktifkan kembali (<code>trainable=True</code>), namun hanya
+      <strong>50 layer terakhir</strong> yang benar-benar di-<em>unfreeze</em> (104 layer pertama tetap dibekukan).
+      Optimizer Adam diinisialisasi ulang dengan <em>learning rate</em> yang lebih kecil, yaitu <strong>0.00005</strong>
+      (5×10<sup>-5</sup>), untuk mencegah perubahan bobot yang terlalu drastis yang dapat merusak representasi yang
+      telah dipelajari. Pelatihan dijalankan hingga maksimal 20 epoch dengan <code>EarlyStopping</code>
+      <em>patience=5</em>. <code>ModelCheckpoint</code> global — yang menggunakan <strong>instance yang sama</strong>
+      dengan Fase 1 — melindungi model dari penurunan performa: hanya epoch dengan <em>val_accuracy</em> yang
+      benar-benar lebih tinggi dari capaian Fase 1 yang dapat menimpa model tersimpan. Dengan mekanisme ini, fine-tuning
+      yang kurang optimal tidak pernah merusak hasil terbaik.
+    </p>
+
+    <p><strong>Forward Pass dan Backpropagation</strong></p>
+
+    <p>
+      Secara konseptual, pada setiap epoch, model melakukan dua lintasan utama: <em>forward pass</em> dan
+      <em>backpropagation</em>. Pada <em>forward pass</em>, satu batch citra (32 gambar) dimasukkan melalui seluruh
+      layer model, menghasilkan probabilitas prediksi (Softmax). Kerugian (<em>loss</em>) dihitung menggunakan Focal
+      Loss antara prediksi dan label sebenarnya. Pada <em>backpropagation</em>, gradien dari fungsi kerugian terhadap
+      setiap parameter yang <em>trainable</em> dihitung mundur dari layer output ke layer input menggunakan aturan
+      rantai (<em>chain rule</em>) dalam kalkulus diferensial. Optimizer Adam kemudian memperbarui setiap parameter
+      dengan mengurangi nilai gradien yang telah diskalakan oleh <em>learning rate</em>. Proses ini diulangi untuk
+      seluruh batch dalam satu epoch, dan diulangi kembali untuk setiap epoch hingga konvergensi tercapai atau
+      EarlyStopping terpicu.
+    </p>
+
+    <p>Berikut adalah representasi sederhana dari progres akurasi selama pelatihan dua fase:</p>
+
+    <div class="mermaid-block">
+      xychart-beta
+    title "Training &amp; Validation Accuracy — Dua Fase (V8)"
+    x-axis ["Ep1(F1)","Ep5(F1)","Ep10(F1)","Ep20(F1)","Ep27(F1)","Ep1(F2)","Ep10(F2)","Ep19(F2)"]
+    y-axis "Accuracy (%)" 0 --> 100
+    line "Train Acc" [40, 49, 55, 60, 63, 51, 70, 82]
+    line "Val Acc" [43, 51, 55, 59, 65, 53, 72, 76]
+    </div>
+    <div class="figure-caption">Gambar 3.3 Representasi Progres Akurasi selama Dua Fase Training</div>
+
+    <div class="placeholder">
+      <p>
+        [TEMPEL GAMBAR: training_history.png — Grafik akurasi dan loss aktual selama training (plot dari
+        history.history) yang menunjukkan tren train vs validation accuracy/ loss]
+      </p>
+    </div>
+
+    <p>
+      Setelah pelatihan selesai, model diuji pada <strong>test set</strong> yang terdiri dari 903 citra yang belum
+      pernah dilihat oleh model selama proses training maupun validasi. Pengujian dilakukan dengan
+      <code>shuffle=False</code> untuk memastikan urutan prediksi dapat diselaraskan dengan label asli. Proses pengujian
+      hanya menggunakan <code>rescale=1/255</code> tanpa augmentasi apapun, sehingga hasil yang diperoleh mencerminkan
+      performa model pada data dunia nyata yang belum dimanipulasi.
+    </p>
+
+  </section>
+
+  <!-- =================================================================== -->
+  <section id="3.2.5">
+    <h3>3.2.5 Evaluasi Model</h3>
+
+    <p>
+      Evaluasi model dilakukan menggunakan beberapa metrik standar klasifikasi untuk mengukur performa secara
+      komprehensif, baik di tingkat keseluruhan (<em>overall</em>) maupun per kelas. Metrik yang digunakan mencakup
+      <em>Confusion Matrix</em>, <em>Accuracy</em>, <em>Precision</em>, <em>Recall</em>, dan <em>F1-Score</em>. Setiap
+      metrik merepresentasikan aspek performa yang berbeda dan saling melengkapi.
+    </p>
+
+    <p><strong>a. Confusion Matrix</strong></p>
+
+    <p>
+      <em>Confusion matrix</em> adalah tabel matriks berukuran 5×5 yang menampilkan distribusi prediksi model terhadap
+      label sebenarnya. Baris (<em>actual</em>) merepresentasikan kelas asli, sedangkan kolom (<em>predicted</em>)
+      merepresentasikan kelas hasil prediksi. Elemen diagonal utama menunjukkan jumlah prediksi benar untuk setiap
+      kelas, sedangkan elemen di luar diagonal menunjukkan kesalahan klasifikasi (<em>misclassification</em>).
+    </p>
+
+    <p>
+      Berdasarkan hasil evaluasi terbaik pada test set, berikut adalah <em>confusion matrix</em> yang dihasilkan:
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Aktual ↓ / Prediksi →</th>
+          <th>acne</th>
+          <th>dry</th>
+          <th>normal</th>
+          <th>oily</th>
+          <th>sensitive</th>
+          <th>Recall</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>acne</strong></td>
+          <td style="background:#c8e6c9"><strong>62</strong></td>
+          <td>3</td>
+          <td>1</td>
+          <td>3</td>
+          <td>7</td>
+          <td>81.6%</td>
+        </tr>
+        <tr>
+          <td><strong>dry</strong></td>
+          <td>1</td>
+          <td style="background:#c8e6c9"><strong>175</strong></td>
+          <td>16</td>
+          <td>15</td>
+          <td>0</td>
+          <td>84.5%</td>
+        </tr>
+        <tr>
+          <td><strong>normal</strong></td>
+          <td>1</td>
+          <td>33</td>
+          <td style="background:#c8e6c9"><strong>230</strong></td>
+          <td>31</td>
+          <td>0</td>
+          <td>77.9%</td>
+        </tr>
+        <tr>
+          <td><strong>oily</strong></td>
+          <td>5</td>
+          <td>45</td>
+          <td>36</td>
+          <td style="background:#c8e6c9"><strong>169</strong></td>
+          <td>1</td>
+          <td>66.0%</td>
+        </tr>
+        <tr>
+          <td><strong>sensitive</strong></td>
+          <td>1</td>
+          <td>5</td>
+          <td>0</td>
+          <td>1</td>
+          <td style="background:#c8e6c9"><strong>57</strong></td>
+          <td>89.1%</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="figure-caption">Tabel 3.4 Confusion Matrix Model pada Test Set (903 citra)</div>
+
+    <div class="placeholder">
+      <p>
+        [TEMPEL GAMBAR: confusion_matrix.png — Heatmap confusion matrix 5×5 sebagai visualisasi kesalahan prediksi per
+        kelas]
+      </p>
+    </div>
+
+    <p><strong>b. Accuracy, Precision, Recall, dan F1-Score</strong></p>
+
+    <p>
+      Akurasi (<em>accuracy</em>) mengukur proporsi prediksi benar terhadap total sampel. Precision mengukur ketepatan
+      prediksi positif: dari semua sampel yang diprediksi sebagai kelas X, berapa persen yang benar-benar kelas X.
+      Recall (<em>sensitivity</em>) mengukur kemampuan model menemukan semua sampel dari kelas X. F1-Score adalah
+      <em>harmonic mean</em> dari precision dan recall, memberikan metrik tunggal yang menyeimbangkan keduanya. Rumus
+      masing-masing metrik adalah:
+    </p>
+
+    <div class="rumus">
+      <strong>Accuracy</strong> = (TP + TN) / (TP + TN + FP + FN)<br>
+      <strong>Precision</strong> = TP / (TP + FP)<br>
+      <strong>Recall</strong> = TP / (TP + FN)<br>
+      <strong>F1-Score</strong> = 2 × (Precision × Recall) / (Precision + Recall)
+    </div>
+
+    <p>
+      Di mana <em>TP</em> (True Positive) adalah jumlah prediksi benar untuk kelas tersebut, <em>FP</em> (False
+      Positive) adalah jumlah sampel dari kelas lain yang salah diprediksi sebagai kelas tersebut, dan <em>FN</em>
+      (False Negative) adalah jumlah sampel dari kelas tersebut yang salah diprediksi sebagai kelas lain.
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Kelas</th>
+          <th>Precision</th>
+          <th>Recall</th>
+          <th>F1-Score</th>
+          <th>Support</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Acne</td>
+          <td>0.8857</td>
+          <td>0.8158</td>
+          <td><strong>0.8493</strong></td>
+          <td>76</td>
+        </tr>
+        <tr>
+          <td>Dry</td>
+          <td>0.6705</td>
+          <td>0.8454</td>
+          <td><strong>0.7479</strong></td>
+          <td>207</td>
+        </tr>
+        <tr>
+          <td>Normal</td>
+          <td>0.8127</td>
+          <td>0.7797</td>
+          <td><strong>0.7958</strong></td>
+          <td>295</td>
+        </tr>
+        <tr>
+          <td>Oily</td>
+          <td>0.7717</td>
+          <td>0.6602</td>
+          <td><strong>0.7116</strong></td>
+          <td>256</td>
+        </tr>
+        <tr>
+          <td>Sensitive</td>
+          <td>0.8769</td>
+          <td>0.8906</td>
+          <td><strong>0.8837</strong></td>
+          <td>64</td>
+        </tr>
+        <tr>
+          <td colspan="2"><strong>Accuracy (overall)</strong></td>
+          <td colspan="3"><strong>0.7717 (77.17%)</strong></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="figure-caption">Tabel 3.5 Classification Report Model pada Test Set</div>
+
+    <p><strong>c. Analisis Hasil Evaluasi</strong></p>
+
+    <p>
+      Berdasarkan hasil evaluasi pada Tabel 3.4 dan Tabel 3.5, beberapa temuan penting dapat diidentifikasi:
+    </p>
+
+    <p>
+      <strong>Kelas dengan performa terbaik:</strong> <em>Sensitive</em> mencatat F1-Score tertinggi sebesar
+      <strong>0.8837</strong> (precision 87.69%, recall 89.06%), diikuti oleh <em>Acne</em> dengan F1-Score
+      <strong>0.8493</strong> (precision 88.57%, recall 81.58%). Kedua kelas ini memiliki ciri visual yang paling khas:
+      sensitif ditandai kemerahan pada kulit, sedangkan acne memiliki tekstur jerawat yang mudah diidentifikasi.
+    </p>
+
+    <p>
+      <strong>Kelas dengan performa terendah:</strong> <em>Oily</em> mencatat F1-Score terendah yaitu
+      <strong>0.7116</strong> dengan recall 66.02%. Meskipun masih terendah, recall telah meningkat signifikan dari
+      iterasi sebelumnya (56% → 66%). Dari 256 sampel oily pada test set, 45 diprediksi sebagai dry dan 36 sebagai
+      normal. Temuan ini konsisten dengan fakta bahwa kilap minyak (<em>oiliness</em>) sangat sulit terdeteksi dari
+      satu foto pencahayaan standar.
+    </p>
+
+    <p>
+      <strong>Sumber misclassification utama:</strong> Secara spesifik, trio kelas <em>dry-normal-oily</em> menunjukkan
+      tingkat tumpang-tindih (<em>overlap</em>) yang tinggi. Normal menjadi "keranjang" dengan 33 sampel dry dan 31
+      sampel oily yang salah diprediksi sebagai oily, serta 45 sampel oily yang bocor ke dry. Tumpang-tindih ini bukan
+      semata kegagalan model melainkan <strong>batas alami visual</strong>: perbedaan kulit dry, normal, dan oily sangat
+      halus dan sangat bergantung pada faktor eksternal seperti pencahayaan, kualitas kamera, dan kondisi kulit saat
+      pengambilan gambar. Perbaikan paling signifikan terjadi pada kelas oily — dari recall 20% (V5) menjadi 66% (V8),
+      kenaikan +46 poin.
+    </p>
+
+    <p>
+      Secara keseluruhan, akurasi <strong>77.17%</strong> pada test set dengan 898 citra merupakan hasil yang valid dan
+      bermakna. Angka ini hampir <strong>3,9 kali</strong> lebih baik dari tebakan acak untuk 5 kelas (20%), dan
+      diperoleh melalui metodologi yang ketat mencakup <em>group-aware split</em> (anti-leakage), evaluasi tanpa
+      augmentasi, perlindungan model terbaik melalui <code>ModelCheckpoint</code>, serta dokumentasi 8 iterasi yang
+      sistematis dari dataset awal 2.084 citra hingga mencapai 8.917 citra.
+    </p>
+
+    <p><strong>d. Kesimpulan Basis Pengetahuan</strong></p>
+
+    <p>
+      Basis pengetahuan yang terbentuk dari penelitian ini mencakup pemahaman komprehensif tentang penerapan transfer
+      learning MobileNetV2 untuk klasifikasi kondisi kulit wajah, dimulai dari pengumpulan dan kurasi dataset hibrida
+      dari Kaggle dan Roboflow, preprocessing dan augmentasi data, perancangan arsitektur <em>custom head</em> di atas
+      MobileNetV2, pelatihan dua fase (<em>feature extraction</em> dan <em>fine-tuning</em>) dengan Focal Loss dan class
+      weighting, hingga evaluasi model menggunakan confusion matrix dan metrik precision/recall/F1. Pengetahuan ini
+      menjadi fondasi untuk tahapan selanjutnya dalam penelitian, yaitu integrasi model ke aplikasi QayraMakeUp dan
+      pengujian secara <em>end-to-end</em> pada lingkungan produksi.
+    </p>
+
+  </section>
+
+</body>
+
+</html>

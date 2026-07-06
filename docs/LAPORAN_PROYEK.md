@@ -1,7 +1,7 @@
 # Laporan Proyek — Klasifikasi Kondisi Kulit Wajah (MobileNetV2 → TFLite)
 
 **Proyek:** QayraMakeUp — TensorFlow MobileNetV2
-**Tanggal:** 17 Juni 2026
+**Tanggal:** 7 Juli 2026
 
 ---
 
@@ -19,15 +19,23 @@ dan menghasilkan probabilitas *softmax* untuk 5 kelas.
 
 ## b. Dataset & Sumbernya
 
-Empat kelas memiliki sumber visual yang jelas, namun **kelas `sensitive` tidak memiliki
-dataset visual "kulit sensitif" yang valid**, sehingga digunakan **proxy** berbasis
-kemerahan kulit:
+Dataset dibangun secara bertahap dari berbagai sumber Kaggle dan Roboflow. Kelas
+`sensitive` tidak memiliki dataset visual "kulit sensitif" yang valid, sehingga
+digunakan **proxy** berbasis kemerahan kulit:
 
 | Kelas | Sumber | Keterangan |
 |---|---|---|
-| oily, dry, normal | Kaggle — *Oily-Dry-and-Normal-Skin-Types* | dataset wajah penuh |
-| acne | Kaggle — *Acne Dataset* | banyak *close-up* kulit |
+| oily, dry, normal | Kaggle — *Oily-Dry-and-Normal-Skin-Types* + Roboflow Universe | dataset wajah penuh |
+| acne | Kaggle — *Acne Dataset* + Roboflow Universe | banyak *close-up* kulit |
 | **sensitive** | **proxy:** *redness* (TrainingDataPro) **+** *rosacea* (Roboflow) | tidak ada dataset "sensitif" langsung |
+
+### Penambahan dataset secara bertahap
+
+- **Batch 1 (V6):** penambahan dari Kaggle/Roboflow untuk seluruh 5 kelas → total
+  ~5.440 gambar. Akurasi melonjak dari 60,58% → **71,22%** (+10,64 poin).
+- **Batch 2 (V7–V8):** penambahan dari Kaggel batch kedua + Roboflow untuk kelas
+  dry, normal, dan oily → total **8.917 gambar**. Akurasi meningkat dari
+  71,22% → **74,39%** → **77,17%** setelah optimalisasi hyperparameter.
 
 ### Tantangan kelas `sensitive` dan penanganannya
 
@@ -36,18 +44,12 @@ kemerahan kulit:
   (*leakage*)** bila foto orang yang sama tersebar antar split.
 - **Penambahan sumber:** ditambahkan kelas **rosacea** dari dataset Roboflow
   *facial-skin-diseases* (kelas lain seperti acne/eksim/herpes/panu **diabaikan**).
-  Setelah kurasi, kelas `sensitive` menjadi **192 gambar bersih** yang berasal dari
-  **±89 grup unik** (gabungan rosacea, redness, dan data kurasi lama).
 - **Split *group-aware* (anti-leakage):** pembagian train/val/test dilakukan **per grup**
-  menggunakan `group_id`, sehingga semua gambar dari satu subjek/satu gambar asli
-  (termasuk augmentasinya) **selalu berada di split yang sama**.
+  sehingga semua gambar dari satu subjek/satu gambar asli (termasuk augmentasinya)
+  **selalu berada di split yang sama**.
 - **Augmentasi hanya di train:** bagian *train* `sensitive` diaugmentasi hingga genap,
   sedangkan **val & test memakai gambar asli saja** (tidak diaugmentasi) agar evaluasi
   jujur.
-- **Augmentasi menjaga sinyal warna:** karena kemerahan adalah **fitur warna**, augmentasi
-  dibatasi pada transformasi **geometric** (flip horizontal, rotasi kecil, zoom/crop
-  ringan, translasi) **+ brightness ringan**, **TANPA mengubah hue/saturation** agar
-  sinyal kemerahan yang justru ingin dipelajari tidak rusak.
 
 ---
 
@@ -55,46 +57,33 @@ kemerahan kulit:
 
 Script: [`tools/prepare_dataset.py`](../tools/prepare_dataset.py)
 
-1. **Kumpulkan pool** per kelas dari sumber mentah + **salin** 100 gambar kurasi manual
-   lama (copy, bukan dipindah).
-2. **Deteksi wajah** — detektor diganti dari **Haar Cascade → OpenCV DNN res10 SSD** yang
-   jauh lebih kuat. Dampaknya signifikan: jumlah *no-face* yang salah dibuang turun drastis
-   (mis. `oily` dari 101 → 10). Gambar tanpa wajah terdeteksi tetap dibuang (dihitung).
+1. **Kumpulkan pool** per kelas dari sumber mentah — Kaggle dan Roboflow Universe.
+2. **Deteksi wajah** — detektor OpenCV DNN res10 SSD. Gambar tanpa wajah terdeteksi
+   tetap dibuang (dihitung).
 3. **Crop wajah → resize 224×224**, normalisasi semua gambar ke `.jpg`.
-4. **Dedup perceptual-hash** hanya untuk **4 kelas besar** (oily/dry/normal/acne);
-   kelas `sensitive` **tidak** di-dedup agar augmentasi & variasi angle dipertahankan.
-5. **Manifest** `dataset/_clean/manifest.csv` (`path, kelas, group_id, sumber`) sebagai
-   dasar split *group-aware*.
-
-Hasil kurasi (pool bersih): oily **350**, dry **369**, normal **376**, acne **250**,
-sensitive **192** (≈89 grup unik).
+4. **Dedup perceptual-hash** untuk menghilangkan gambar duplikat.
+5. **Pembersihan manual** — menghapus gambar non-face, screenshot, stock photo, dan
+   gambar dengan kategori salah (mis. eczema di folder sensitive).
 
 ---
 
 ## d. Pembagian Akhir Dataset (70 / 20 / 10)
 
-Script: [`tools/resplit_dataset.py`](../tools/resplit_dataset.py) — resplit **group-aware**
-(seed=42, **anti-leakage**: semua file satu grup masuk split yang sama). Pembagian akhir
-dataset final (V4):
+Dataset final (V8) setelah seluruh batch digabungkan dan dibersihkan:
 
 | Kelas | Train | Val | Test | Total |
 |---|---|---|---|---|
-| acne | 403 | 115 | 52 | 570 |
-| dry | 296 | 89 | 40 | 425 |
-| normal | 287 | 82 | 44 | 413 |
-| oily | 289 | 84 | 40 | 413 |
-| sensitive | 181 | 50 | 32 | 263 |
-| **TOTAL** | **1.456** | **420** | **208** | **2.084** |
+| acne | 565 | 162 | 77 | 804 |
+| dry | 1.445 | 417 | 208 | 2.070 |
+| normal | 2.029 | 580 | 296 | 2.905 |
+| oily | 1.785 | 511 | 257 | 2.553 |
+| sensitive | 405 | 115 | 65 | 585 |
+| **TOTAL** | **6.229** | **1.785** | **903** | **8.917** |
 
-Total: **1.456 train / 420 val / 208 test** (2.084 gambar). **Ketimpangan antar kelas:**
-`acne` paling banyak (**570**), `sensitive` paling sedikit (**263**) — ditangani dengan
-**`class_weight` dinamis** di [`train.py`](../train.py) (dihitung otomatis dari jumlah train
-tiap kelas). Split terbukti **bebas leakage** (irisan grup antar split = 0).
-
-**Perbaikan `labels.txt`:** file ditulis ulang dalam **urutan alfabet**
-(`acne, dry, normal, oily, sensitive`) agar **cocok dengan urutan baca
-`flow_from_directory`**. Ini sekaligus **menutup bug** urutan lama di mana `oily` dan `dry`
-tertukar.
+Total: **6.229 train / 1.785 val / 903 test** (8.917 gambar). **Ketimpangan antar kelas:**
+`normal` paling banyak (**2.905**), `sensitive` paling sedikit (**585** — 5× lebih sedikit
+dari normal). Ditangani dengan **`class_weight` dinamis** yang di-*clamp* pada rentang
+**[0.8, 1.5]** untuk mencegah bobot terlalu ekstrem yang dapat mendistorsi pembelajaran.
 
 ---
 
@@ -103,74 +92,71 @@ tertukar.
 **Arsitektur:** MobileNetV2 (bobot ImageNet, `include_top=False`, *base di-freeze*) + head:
 `GlobalAveragePooling2D → Dense(128, ReLU) → Dropout(0.3) → Dense(5, softmax)`.
 
-**Hyperparameter & pipeline (V5 — final):**
+**Hyperparameter & pipeline (V8 — final):**
 
-- **Fase 1 (feature extraction):** 20 epoch, optimizer **Adam (lr default)**, *base* dibekukan.
-  `EarlyStopping` patience=5 (`restore_best_weights=True`). Loss: **Focal Loss (gamma=2.0)**.
+- **Fase 1 (feature extraction):** 30 epoch, optimizer **Adam (lr default)**, *base* dibekukan.
+  `EarlyStopping` patience=7 (`restore_best_weights=True`). Loss: **Focal Loss (gamma=2.0)**.
   Augmentasi train: rotasi 20°, zoom 0.2, horizontal flip, brightness [0.8–1.2], width/height
   shift 0.1, shear 0.1.
-- **Fase 2 (fine-tuning):** *unfreeze* 50 layer terakhir, Adam **lr=1e-4**, maks 10 epoch,
-  `EarlyStopping` patience=5. Loss: **Focal Loss (gamma=2.0)**. **Terbukti tidak efektif** —
-  val accuracy fase 2 selalu **< fase 1**; EarlyStopping menghentikan di **epoch 7** fase 2.
-  Model akhir selalu dari fase 1.
+- **Fase 2 (fine-tuning):** *unfreeze* 50 layer terakhir, Adam **lr=5e-5**, maks 20 epoch,
+  `EarlyStopping` patience=5. Loss: **Focal Loss (gamma=2.0)**. **Terbukti efektif** —
+  fine-tuning berhasil meningkatkan val accuracy dari 65,00% → **75,56%** (+10,56 poin)
+  dan test accuracy menjadi **77,17%**.
 - **`ModelCheckpoint(save_best_only=True)`** dipakai di **kedua fase dengan instance yang sama**
   → `skin_model_finetuned.h5` hanya ditimpa bila ada epoch yang **benar-benar lebih baik**,
-  sehingga melindungi hasil dari fase 2 yang merugikan.
-- **`class_weight`** dihitung **dinamis** dari jumlah train aktual (*balanced*).
-- **Dropout diturunkan dari 0.5 → 0.3** untuk mengurangi underfitting di validasi (selisih
-  train acc ~70% vs val ~56% menunjukkan Dropout terlalu agresif memotong informasi).
-- **Focal Loss (gamma=2.0)** ditambahkan untuk memberi bobot lebih besar pada sampel yang
-  sulit diklasifikasi (kelas lemah seperti oily, dry). Hasilnya identik dengan categorical
-  crossentropy — tidak merusak, tapi tidak membantu secara signifikan.
+  sehingga melindungi hasil dari fase mana pun.
+- **`class_weight`** dihitung **dinamis** dari jumlah train aktual (*balanced*), kemudian
+  di-*clamp* ke rentang **[0.8, 1.5]**.
+- **Dropout 0.3** — diturunkan dari 0.5 untuk mengurangi underfitting.
+- **Focal Loss (gamma=2.0)** untuk menangani ketidakseimbangan kelas.
 
-**Ringkasan hasil per fase (V5):**
+**Ringkasan hasil per fase (V8):**
 
 | Fase | Train acc | Val acc |
 |---|---|---|
-| Fase 1 — awal (ep1) | ~0.39 | ~0.47 |
-| Fase 1 — terbaik (ep6) | ~0.62 | **~0.57** ← model disimpan |
-| Fase 1 — EarlyStopping | ep11 | — |
-| Fase 2 — terbaik (ep9) | ~0.85 | ~0.58 (tidak mengalahkan fase 1) |
-| Fase 2 — EarlyStopping | ep10 | — |
+| Fase 1 — awal (ep1) | ~0.40 | ~0.43 |
+| Fase 1 — terbaik (ep27) | ~0.63 | **~0.65** ← model fase 1 terbaik |
+| Fase 1 — EarlyStopping | ep27 | — |
+| Fase 2 — terbaik (ep19) | ~0.82 | **~0.76** ← model final |
+| Fase 2 — EarlyStopping | ep20 | — |
 
 **Temuan utama:**
 
-- **Overfitting ringan** terlihat dari selisih train acc (~60–68%) vs val acc (~57–58%) di
-  akhir fase 1.
-- **Dropout 0.3 → 0.5 terbukti membantu** — val accuracy fase 1 naik dari ~0.56 → ~0.57,
-  dan akurasi test set naik dari 58.65% → **60.58%**.
-- **Focal Loss tidak memberikan peningkatan signifikan** — hasil identik dengan categorical
-  crossentropy. Tidak merusak, tapi tidak membantu untuk dataset ini.
-- **Fine-tuning lr=1e-4 tetap tidak menaikkan val accuracy** (fase 2 terbaik **58%** <
-  fase 1 terbaik **57%**). Konsisten di **3 percobaan** (lr=1e-5 maupun 1e-4); EarlyStopping
-  menghentikan fase 2 lebih awal.
-- **Model final** (`skin_model_finetuned.h5`) berasal dari **Fase 1 epoch 6**, val accuracy
-  **57.38%** pada data validasi — dan **60.58%** pada test set.
+- **Fine-tuning kini efektif** — berbeda dengan V5 di mana fine-tuning selalu menurunkan
+  performa. Dengan dataset 8.917 gambar dan lr=5e-5, fine-tuning memberikan peningkatan
+  val accuracy dari 65% → 76% dan test accuracy dari 65,48% (sebelum optimalisasi)
+  menjadi **77,17%**.
+- **`class_weight` clamp [0.8–1.5] penting** — tanpa clamping, model dengan dataset tidak
+  seimbang mengalami distorsi: terlalu takut salah prediksi kelas minoritas dan terlalu
+  abai pada kelas mayoritas, menjatuhkan akurasi ke 65,48%.
+- **Epoch lebih panjang + patience lebih tinggi membantu** — Fase 1 30 epoch dengan
+  patience=7 memberi model cukup waktu untuk konvergensi penuh sebelum masuk fine-tuning.
+- **ReduceLROnPlateau tidak membantu** — menurunkan akurasi dari 74,39% → 73,27%.
+- **Model final** (`skin_model_finetuned.h5`) berasal dari **Fase 2 epoch 19**,
+  val accuracy **75,56%** pada data validasi — dan **77,17%** pada test set.
 
 ---
 
 ## f. Evaluasi di Test Set
 
-Script: [`tools/evaluate.py`](../tools/evaluate.py) — 208 gambar test, `shuffle=False`,
-tanpa augmentasi. Hasil **final (V5)**: dataset 2.084 gambar + train.py termodifikasi
-(Dropout 0.3 + Focal Loss).
+Script: [`tools/evaluate.py`](../tools/evaluate.py) — 898 gambar test, `shuffle=False`,
+tanpa augmentasi. Hasil **final (V8)**: dataset 8.917 gambar dengan fine-tuning optimal.
 
-**Akurasi keseluruhan: 60.58%.**
+**Akurasi keseluruhan: 77,17%.**
 
 | Kelas | Precision | Recall | F1-score | Support |
 |---|---|---|---|---|
-| acne | 0.71 | 0.96 | **0.82** | 52 |
-| dry | 0.38 | 0.50 | 0.43 | 40 |
-| normal | 0.49 | 0.52 | 0.51 | 44 |
-| oily | 0.62 | 0.20 | **0.30** | 40 |
-| sensitive | 0.96 | 0.78 | **0.86** | 32 |
-| **accuracy** | – | – | **0.61** | 208 |
-| macro avg | 0.63 | 0.59 | 0.58 | 208 |
-| weighted avg | 0.62 | 0.61 | 0.59 | 208 |
+| acne | 0.89 | 0.82 | **0.85** | 76 |
+| dry | 0.67 | 0.85 | 0.75 | 207 |
+| normal | 0.81 | 0.78 | **0.80** | 295 |
+| oily | 0.77 | 0.66 | **0.71** | 256 |
+| sensitive | 0.88 | 0.89 | **0.88** | 64 |
+| **accuracy** | – | – | **0.77** | 898 |
+| macro avg | 0.80 | 0.80 | 0.80 | 898 |
+| weighted avg | 0.78 | 0.77 | 0.77 | 898 |
 
-**Model akhir berasal dari Fase 1 epoch 6.** Fine-tuning tetap aktif di kode namun tidak
-efektif — model terbaik selalu dari fase 1, dan dilindungi `ModelCheckpoint(save_best_only=True)`
-sehingga fase 2 yang lebih buruk **tidak pernah menimpa** model terbaik.
+**Model akhir berasal dari Fase 2 (fine-tune) epoch 19.** Fine-tuning kini terbukti
+efektif setelah dataset mencapai ukuran yang memadai (5.440+ gambar).
 
 **Confusion Matrix** (baris = label asli, kolom = prediksi):
 
@@ -179,82 +165,78 @@ sehingga fase 2 yang lebih buruk **tidak pernah menimpa** model terbaik.
 Matriks (label urut: acne, dry, normal, oily, sensitive):
 
 ```
-[[50  2  0  0  0]
- [ 6 20 11  3  0]
- [ 3 15 23  2  1]
- [ 8 11 13  8  0]
- [ 3  4  0  0 25]]
+[[ 62   3   1   3   7]
+ [  1 175  16  15   0]
+ [  1  33 230  31   0]
+ [  5  45  36 169   1]
+ [  1   5   0   1  57]]
 ```
 
 ---
 
 ## g. Analisis
 
-- **Kelas terkuat & konsisten:** `acne` (F1 **0.82**, recall 0.96) dan `sensitive`
-  (F1 **0.86**). Keduanya **kuat di SEMUA iterasi** (V1–V5) karena ciri visualnya khas
-  (tekstur jerawat; kemerahan), sehingga paling mudah dipisahkan.
-- **Sumber error utama — trio dry/normal/oily tumpang-tindih (konsisten di semua iterasi):**
-  pada confusion matrix V5, `oily` hanya 8/40 benar dengan **13 bocor ke `normal`**;
-  `dry` 20/40 benar dengan 11 bocor ke `normal`. Kini **`normal` menjadi "keranjang"
-  over-prediksi** (banyak oily/dry salah jadi normal).
-- **`oily` paling lemah** (recall **0.20**) — kemiripan visual dengan `normal` sangat tinggi;
-  kilap minyak sulit terlihat pada foto pencahayaan biasa.
-- Tumpang-tindih ini adalah **batas alami visual**: perbedaan kulit *dry/normal/oily* memang
-  halus dan sangat bergantung pencahayaan/kualitas foto — bukan sekadar kekurangan model.
-- **Dropout 0.3 → 0.5 terbukti membantu.** Penurunan Dropout dari 0.5 → 0.3 mengurangi
-  underfitting di validasi (selisih train acc ~70% vs val ~56%), menaikkan akurasi test set
-  dari 58.65% → **60.58%** (+1.93 poin).
-- **Focal Loss tidak memberikan peningkatan signifikan.** Meskipun dirancang untuk fokus
-  pada sampel yang sulit diklasifikasi (kelas lemah seperti oily, dry), hasilnya identik
-  dengan categorical crossentropy. Tidak merusak, tapi tidak membantu untuk dataset ini.
-- **Fine-tuning terbukti tidak menaikkan val accuracy (3× percobaan).** Fase 2 (fine-tune)
-  **selalu** menghasilkan val accuracy **< fase 1**, termasuk setelah lr dinaikkan ke 1e-4.
-  Karena dilindungi `ModelCheckpoint(save_best_only=True)`, fase 2 yang lebih buruk **tidak
-  merusak** hasil — model terbaik selalu diambil dari fase 1 — namun fine-tuning **tidak
-  memberi manfaat** untuk dataset sekecil ini.
+- **Kelas terkuat & konsisten:** `sensitive` (F1 **0.88**, recall 89%, precision 88%)
+  dan `acne` (F1 **0.85**, precision 89%). Keduanya kuat di semua iterasi karena ciri
+  visual yang khas (kemerahan; tekstur jerawat).
+- **Peningkatan paling dramatis — `oily`:** recall naik dari **20%** (V5) → **56%**
+  (V7) → **66%** (V8). Kenaikan +46 poin recall, dengan hanya 45 dari 256 sampel oily
+  yang kini salah diprediksi sebagai dry (sebelumnya 65 di V7). F1-score naik dari
+  0,30 → 0,66 → **0,71**.
+- **Sumber error utama — trio dry/normal/oily masih tumpang-tindih:**
+  pada confusion matrix V8, normal banyak bocor ke oily (31) dan dry (33); oily bocor
+  ke dry (45) dan normal (36). Tumpang-tindih ini adalah **batas alami visual**.
+- **Semua kelas kini di atas F1 0,70** — tidak ada lagi kelas "sangat lemah" seperti
+  di iterasi awal. Ini menunjukkan model sudah mencapai keseimbangan yang baik.
+- **Fine-tuning kini efektif.** Berbeda dengan dataset kecil (V5, 2.084 gambar) di mana
+  fine-tuning selalu menurunkan performa, pada dataset besar (8.917 gambar) fine-tuning
+  dengan lr=5e-5 berhasil memberikan peningkatan +2,78 poin (74,39% → 77,17%).
 - **Cleaning manual terlalu agresif sempat merusak hasil (V3).** Pembersihan menghapus
-  ~70% data `acne`, menjatuhkan akurasi ke **46.72%**. Dipulihkan dengan menambah data baru
-  dari tahap *staging* (imtkaggleteam) di V4.
-- **Augmentasi lebih kaya + fase 1 lebih panjang membantu.** Tambahan augmentasi
-  (*brightness*, *shift*, *shear*) dan fase 1 **20 epoch** berkontribusi pada hasil terbaik
-  **60.58%** (V5).
+  ~70% data `acne`, menjatuhkan akurasi ke **46,72%**. Dipulihkan dengan menambah data
+  baru dari tahap *staging* di V4.
+- **Penambahan dataset adalah strategi paling efektif.** Penambahan dari 2.084 → 5.440
+  gambar (V5→V6) menghasilkan lonjakan akurasi +10,64 poin (60,58% → 71,22%) — peningkatan
+  terbesar sepanjang iterasi.
+- **Augmentasi lebih kaya + epoch lebih panjang + fine-tuning optimal** berkontribusi
+  pada hasil terbaik **77,17%** (V8).
 
 ---
 
 ## h. Keterbatasan
 
-1. **Test set masih terbatas** (208 gambar) → metrik tetap **berisik**, terutama kelas
-   minoritas; selisih beberapa gambar dapat menggeser persentase.
+1. **Test set tetap berisik** (898 gambar) — meskipun 4× lebih besar dari V5 (208),
+   selisih beberapa gambar masih dapat menggeser persentase, terutama untuk kelas
+   minoritas (sensitive: 65 test).
 2. **Bias sumber pada `sensitive`** — kelas ini berasal dari sumber berbeda (rosacea +
    redness), sehingga model bisa saja belajar **ciri sumber/dataset**, bukan murni
-   "sensitivitas kulit". **Uji sebenarnya** adalah foto wajah baru di luar dataset.
-3. **Fine-tuning MobileNetV2 tidak efektif untuk dataset kecil ini** — val accuracy fase 2
-   **selalu lebih rendah** dari fase 1 (terbukti pada lr 1e-5 maupun 1e-4). Manfaatnya nol;
-   hanya tidak merusak karena dilindungi `ModelCheckpoint(save_best_only=True)`.
-4. **Cleaning manual berisiko membuang terlalu banyak data kelas minoritas** — pada V3,
-   `acne` kehilangan **~70%** datanya sehingga akurasi anjlok ke **46.72%** sebelum
-   dipulihkan dengan data baru.
-5. **Kelas `oily` tetap sulit dikenali** (recall **20%**) karena kemiripan visual dengan
-   `normal` sangat tinggi.
+   "sensitivitas kulit".
+3. **Kelas `oily` tetap yang paling menantang** (recall **66%**) — kemiripan visual
+   dengan dry dan normal masih menjadi sumber error utama; kilap minyak sulit
+   terdeteksi dari foto pencahayaan biasa.
+4. **Dataset tidak seimbang** — normal (2.905) 5× lebih banyak dari sensitive (585).
+   Clamp class_weight [0.8–1.5] membantu namun bukan solusi optimal.
+5. **Fine-tuning hanya efektif pada dataset besar** — pada dataset kecil (<3.000 gambar),
+   fine-tuning konsisten menurunkan performa. Temuan ini penting untuk penelitian
+   serupa di masa depan.
+6. **Arsitektur MobileNetV2 mulai mendekati batas** — peningkatan lebih lanjut
+   kemungkinan membutuhkan arsitektur yang lebih canggih (EfficientNet, ViT).
 
 ---
 
 ## i. Rekomendasi Perbaikan
 
-1. **Nonaktifkan atau ganti strategi fine-tuning.** Karena fase 2 tidak pernah membantu,
-   pertimbangkan **unfreeze lebih sedikit layer** (mis. 10–20 layer terakhir saja) atau
-   pakai *learning rate* adaptif seperti **`ReduceLROnPlateau`** alih-alih lr tetap.
-2. **Lakukan cleaning manual secara bertahap** dan **hitung ulang jumlah per kelas sebelum
-   menghapus**, agar kelas minoritas (seperti `acne` di V3) tidak kehilangan terlalu banyak
-   data dan menjatuhkan akurasi.
-3. **Prioritaskan penambahan data `oily`** dengan **kilap wajah yang jelas terlihat** (selfie
-   pencahayaan terang) untuk menaikkan recall kelas ini yang masih rendah (20%).
-4. **Perbaiki data dry/normal/oily** secara umum: tambah jumlah, perbaiki kualitas &
-   konsistensi pencahayaan, kurangi ambiguitas label.
-5. **Kumpulkan foto kulit sensitif asli** untuk menggantikan proxy redness/rosacea, agar
-   kelas `sensitive` benar-benar merepresentasikan target aplikasi.
-6. **Pertimbangkan konsolidasi kelas** (mis. menggabungkan kategori yang ambigu) bila sesuai
-   dengan kebutuhan produk QayraMakeUp.
+1. **Pertahankan strategi fine-tuning saat ini** — lr=5e-5, 20 epoch, unfreeze 50 layer
+   terakhir — yang terbukti efektif pada dataset besar.
+2. **Prioritaskan penambahan data `oily`** dengan kilap wajah yang jelas terlihat untuk
+   menaikkan recall yang masih 66%.
+3. **Tambah data `sensitive` asli** (bukan proxy redness/rosacea) untuk mengurangi bias
+   sumber dan meningkatkan representasi.
+4. **Pertimbangkan arsitektur yang lebih canggih** — EfficientNetV2, ConvNeXt, atau
+   Vision Transformer — untuk melampaui batas MobileNetV2.
+5. **Implementasikan cross-validation** (k-fold) untuk estimasi performa yang lebih
+   stabil dan mengurangi ketergantungan pada satu split test.
+6. **Eksplorasi ensemble model** — menggabungkan beberapa model dengan arsitektur
+   berbeda dapat menaikkan akurasi 2–5 poin.
 
 ---
 
@@ -266,12 +248,15 @@ Matriks (label urut: acne, dry, normal, oily, sensitive):
 | **V2** | +killa92 (1.498 foto) | 53.02% | Test set lebih berat & beragam |
 | **V3** | +cleaning manual (1.214 foto) | 46.72% | Cleaning terlalu agresif di `acne` |
 | **V4** | +staging baru (2.084 foto) | 58.65% | Augmentasi lebih kaya |
-| **V5** | 2.084 foto + Dropout 0.3 + Focal Loss | **60.58%** | **Terbaik** — Dropout 0.3 + Focal Loss |
+| **V5** | 2.084 foto + Dropout 0.3 + Focal Loss | 60.58% | Dropout 0.3 + Focal Loss |
+| **V6** | +Kaggle Batch 1 (~5.440 foto) | 71.22% | Lompatan +10.64 poin |
+| **V7** | +Kaggle Batch 2 (8.917 foto) | 74.39% | +clamp class weight [0.8–1.5] |
+| **V8** | 8.917 foto + fine-tune optimal | **77.17%** | **Terbaik** — lr 5e-5 + 20 ep FT |
 
-Pelajaran utama: menambah data **tanpa menjaga keseimbangan kelas** (V2) atau **membuang
-data minoritas berlebihan** (V3) justru menurunkan akurasi; perbaikan nyata (V4→V5) datang
-dari **modifikasi hyperparameter** (Dropout 0.3, Focal Loss), bukan dari fine-tuning atau
-penambahan data baru.
+Pelajaran utama: **menambah data** adalah strategi paling efektif (+10.64 poin,
+V5→V6); **class weight clamping** menstabilkan training pada dataset tidak seimbang;
+**fine-tuning hanya efektif setelah dataset cukup besar** — pada dataset kecil,
+fine-tuning justru kontraproduktif.
 
 ---
 

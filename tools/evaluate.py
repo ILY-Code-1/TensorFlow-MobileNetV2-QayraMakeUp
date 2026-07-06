@@ -16,7 +16,18 @@ from pathlib import Path
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.keras import backend as K
+from tensorflow.keras.utils import custom_object_scope
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
+
+
+def focal_loss(gamma=2.0):
+    def _focal(y_true, y_pred):
+        y_pred = K.clip(y_pred, K.epsilon(), 1.0 - K.epsilon())
+        cross_entropy = -y_true * K.log(y_pred)
+        weight = K.pow(1.0 - y_pred, gamma) * y_true
+        return K.sum(weight * cross_entropy, axis=-1)
+    return _focal
 
 from sklearn.metrics import (
     accuracy_score,
@@ -59,7 +70,8 @@ def main():
 
     model_path = pick_model_path()
     print(f"Memuat model: {model_path.name}")
-    model = tf.keras.models.load_model(str(model_path))
+    with custom_object_scope({'_focal': focal_loss()}):
+        model = tf.keras.models.load_model(str(model_path))
 
     # Preprocessing SAMA seperti train.py untuk val (rescale saja, tanpa augmentasi).
     test_gen = ImageDataGenerator(rescale=1.0 / 255)

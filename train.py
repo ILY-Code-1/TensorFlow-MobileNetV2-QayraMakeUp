@@ -19,9 +19,9 @@ def focal_loss(gamma=2.0):
         return K.sum(weight * cross_entropy, axis=-1)
     return _focal
 BATCH_SIZE = 32
-# Fase 1 dinaikkan 15 -> 20 epoch: beri model lebih banyak kesempatan belajar fitur
+# Fase 1 dinaikkan 20 -> 30 epoch beri model lebih banyak kesempatan belajar fitur
 # sebelum fine-tuning (terutama membantu kelas lemah seperti oily).
-EPOCHS = 20
+EPOCHS = 30
 
 # Augmentasi train diperkuat: variasi brightness, geser posisi, & shear membuat model
 # lebih robust terhadap perbedaan pencahayaan/framing antar sumber data dan mengurangi
@@ -55,10 +55,12 @@ val_data = val_gen.flow_from_directory(
 
 # Kelas tidak seimbang (sensitive jauh lebih sedikit dari normal/dry/oily) ->
 # hitung class_weight 'balanced' dari jumlah train tiap kelas (urutan = class_indices model).
+# class_weight di-clamp ke [0.8, 1.5] agar tidak terlalu ekstrem — mencegah model
+# terlalu takut pada kelas minoritas atau terlalu abai pada kelas mayoritas.
 counts = np.bincount(train_data.classes, minlength=train_data.num_classes)
 total = counts.sum()
 class_weight = {
-    i: float(total / (train_data.num_classes * c)) if c else 0.0
+    i: max(0.8, min(1.5, float(total / (train_data.num_classes * c)))) if c else 0.0
     for i, c in enumerate(counts)
 }
 print("class_indices:", train_data.class_indices)
@@ -108,10 +110,10 @@ ckpt_phase1 = ModelCheckpoint(
     monitor="val_accuracy", mode="max",
     save_best_only=True, verbose=1,
 )
-# EarlyStopping fase 1: hentikan bila val_accuracy tak membaik 5 epoch, pulihkan bobot terbaik.
+# EarlyStopping fase 1: hentikan bila val_accuracy tak membaik 7 epoch, pulihkan bobot terbaik.
 early_phase1 = EarlyStopping(
     monitor="val_accuracy", mode="max",
-    patience=5, restore_best_weights=True, verbose=1,
+    patience=7, restore_best_weights=True, verbose=1,
 )
 # EarlyStopping fase 2: fine-tuning kini lebih agresif (lr 1e-4, 10 epoch) sehingga rawan
 # overfit -> hentikan & pulihkan bobot terbaik bila val_accuracy tak membaik 5 epoch.
@@ -136,20 +138,20 @@ base_model.trainable = True
 for layer in base_model.layers[:-50]:
     layer.trainable = False
 
-# Fine-tuning lebih agresif: lr dinaikkan 1e-5 -> 1e-4 agar 50 layer terakhir benar-benar
-# beradaptasi ke domain kulit wajah (lr 1e-5 sebelumnya terbukti nyaris tak menggeser val acc).
+# Fine-tuning: lr diturunkan 1e-4 -> 5e-5 agar lebih halus dalam
+# menyesuaikan bobot (lr 1e-4 sebelumnya masih fluktuatif di val acc).
 model.compile(
-    optimizer=tf.keras.optimizers.Adam(1e-4),
+    optimizer=tf.keras.optimizers.Adam(5e-5),
     loss=focal_loss(),
     metrics=["accuracy"]
 )
 
-# Fase 2 dinaikkan 5 -> 10 epoch (diiringi EarlyStopping agar berhenti sebelum overfit).
-# ckpt_global = instance SAMA -> 'best' fase 1 tetap dipertahankan.
+# Fase 2 dinaikkan 10 -> 15 epoch (lr lebih kecil, jadi butuh lebih banyak epoch
+# untuk konvergensi). EarlyStopping tetap melindungi dari overfitting.
 history2 = model.fit(
     train_data,
     validation_data=val_data,
-    epochs=10,
+    epochs=20,
     class_weight=class_weight,
     callbacks=[ckpt_global, early_phase2],
 )

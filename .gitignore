@@ -7,6 +7,7 @@ dataset/_raw/
 dataset/_clean/
 dataset/_recon/
 dataset/_staging/
+dataset/_temp/
 
 # Semua file gambar di dalam dataset/ (rekursif)
 dataset/**/*.jpg
